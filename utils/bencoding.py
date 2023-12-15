@@ -1,3 +1,5 @@
+from collections import OrderedDict
+
 STR_START = b'0123456789'
 INT_START = b'i'
 LIST_START = b'l'
@@ -16,10 +18,11 @@ class Decoder:
         Depending on value's starting byte, return appropriate decoded message
         '''
 
-        #TODO: return some sort of error - shouldn't be a case where we continue when index is maxxed out
+        # should never reach end of file without decoding ending
         if self.__current_byte() is None:
-            return None
-        elif self.__current_byte() == INT_START:
+            raise EOFError("Reached end of error before decoding is completed.")
+        
+        if self.__current_byte() == INT_START:
             self.__update_index(1)
             return self.__decode_int()
         elif self.__current_byte() == LIST_START:
@@ -91,7 +94,7 @@ class Decoder:
         return list
 
     def __decode_dict(self) -> dict:
-        dict = {}
+        dict = OrderedDict()
         self.__update_index(1)
 
         while self.__value[self.__index:self.__index + 1] != TYPE_END:
