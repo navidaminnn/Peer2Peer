@@ -16,23 +16,29 @@ class Decoder:
         Depending on value's starting byte, return appropriate decoded message
         '''
 
-        # 'base case' - no more calls needed once index is max'd
-        if self.__index == self.__MAX_INDEX:
-            print("This is done")
-            return
-
-        # use slicing rather than indexing to return byte object rather than int
-        if self.__value[self.__index:self.__index + 1] == INT_START:
+        #TODO: return some sort of error - shouldn't be a case where we continue when index is maxxed out
+        if self.__current_byte() is None:
+            return None
+        elif self.__current_byte() == INT_START:
             self.__update_index(1)
             return self.__decode_int()
-        elif self.__value[self.__index:self.__index + 1] == LIST_START:
+        elif self.__current_byte() == LIST_START:
             return self.__decode_list()
-        elif self.__value[self.__index:self.__index + 1] == DICT_START:
-            return self.decode_dict()
-        elif self.__value[self.__index:self.__index + 1] in STR_START:
+        elif self.__current_byte() == DICT_START:
+            return self.__decode_dict()
+        elif self.__current_byte() in STR_START:
             return self.__decode_string()
+        elif self.__current_byte() == TYPE_END:
+            return None
 
         raise TypeError("Invalid value passed - Value needs to be of type 'bytes'")
+    
+    def __current_byte(self) -> bytes:
+        # use slicing rather than indexing to return byte object rather than int
+        if self.__index + 1 >= self.__MAX_INDEX:
+            return None
+        
+        return self.__value[self.__index:self.__index + 1]
 
     def __update_index(self, increment: int) -> None:
         '''
@@ -55,11 +61,13 @@ class Decoder:
     def __decode_string(self) -> str:
         str_size = self.__get_size()
 
-        #TODO: either utilize update_index func. or remove it altogether
         self.__index = self.__value.find(SIZE_DELIMITER, self.__index) + 1
         end_index = self.__index + str_size
 
         decoded_bytes = self.__value[self.__index:end_index]
+
+        # update index to point at next item
+        self.__index = end_index
 
         return decoded_bytes
     
@@ -70,20 +78,27 @@ class Decoder:
 
         self.__index = end_index
 
+        #TODO: figure out a more 'elegant' approach so we don't have to typecast
         return int(decoded_bytes)
 
     def __decode_list(self) -> list:
         list = []
-        list_size = self.__get_size()
+        self.__update_index(1)
 
-        #TODO: either utilize update_index func. or remove it altogether
-        self.__index = self.__value.find(SIZE_DELIMITER, self.__index) + 1
-
-        for i in range(list_size):
-            
-            pass
+        while self.__value[self.__index:self.__index + 1] != TYPE_END:
+            list.append(self.decode())
 
         return list
 
-    def decode_dict(self) -> dict:
-        pass
+    def __decode_dict(self) -> dict:
+        dict = {}
+        self.__update_index(1)
+
+        while self.__value[self.__index:self.__index + 1] != TYPE_END:
+            key = self.decode()
+            value = self.decode()
+
+            dict[key] = value
+
+        return dict
+
