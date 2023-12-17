@@ -23,7 +23,6 @@ class Decoder:
             raise EOFError("Reached end of error before decoding is completed.")
         
         if self.__current_byte() == INT_START:
-            self.__update_index(1)
             return self.__decode_int()
         elif self.__current_byte() == LIST_START:
             return self.__decode_list()
@@ -75,26 +74,36 @@ class Decoder:
         return decoded_bytes
     
     def __decode_int(self) -> int:
+        self.__update_index(1)
+
         # end index is set to next occurance of integer terminator
         end_index = self.__value.find(TYPE_END, self.__index)
-        decoded_bytes = self.__value.decode()[self.__index:end_index]
+        decoded_bytes = self.__value[self.__index:end_index]
 
-        self.__index = end_index
+        # index is now set to next item in file
+        self.__index = end_index + 1
 
         #TODO: figure out a more 'elegant' approach so we don't have to typecast
         return int(decoded_bytes)
 
     def __decode_list(self) -> list:
         list = []
+
+        # remove the 'l' byte
         self.__update_index(1)
 
         while self.__value[self.__index:self.__index + 1] != TYPE_END:
             list.append(self.decode())
 
+        # index now points to next item in file
+        self.__update_index(1)
+
         return list
 
     def __decode_dict(self) -> dict:
         dict = OrderedDict()
+
+        # remove the 'd' byte
         self.__update_index(1)
 
         while self.__value[self.__index:self.__index + 1] != TYPE_END:
@@ -103,5 +112,53 @@ class Decoder:
 
             dict[key] = value
 
-        return dict
+        # index now points to next item in file
+        self.__update_index(1)
 
+        return dict
+    
+class Encoder:
+    #TODO: clean up code so that param is taken in constructor just like Decoder class,
+    #      consider using a var to keep track of curr_input
+    def encode(self, input):
+        '''
+        depending on given input, return bencoded object
+        '''
+
+        if type(input) is str:
+            return self.__encode_str(input)
+        elif type(input) is int:
+            return self.__encode_int(input)
+        elif type(input) is list:
+            return self.__encode_list(input)
+        elif type(input) is OrderedDict:
+            return self.__encode_dict(input)
+        else:
+            raise TypeError("Input is not valid to be bencoded.")
+        
+
+    def __encode_str(self, input: str):
+        return bytes(str(len(input)) + ':' + input, 'utf-8')
+
+    def __encode_int(self, input: int):
+        return bytes('i' + str(input) + 'e', 'utf-8')
+
+    def __encode_list(self, input: list):
+        res = bytearray('l', 'utf-8')
+
+        for item in input:
+            res.extend(self.encode(item))
+
+        res.extend(b'e')
+
+        return bytes(res)
+
+    def __encode_dict(self, input: OrderedDict):
+        res = bytearray('d', 'utf-8')
+
+        for k, v in input.items():
+            res.extend(self.encode(k))
+            res.extend(self.encode(v))
+        res.extend(b'e')
+
+        return bytes(res)
