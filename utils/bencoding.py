@@ -133,6 +133,8 @@ class Encoder:
             return self.__encode_list(input)
         elif type(input) is OrderedDict:
             return self.__encode_dict(input)
+        elif type(input) is bytes:
+            return self.__encode_bytes(input)
         else:
             raise TypeError("Input is not valid to be bencoded.")
         
@@ -160,5 +162,12 @@ class Encoder:
             res.extend(self.encode(k))
             res.extend(self.encode(v))
         res.extend(b'e')
+
+        return bytes(res)
+    
+    def __encode_bytes(self, input: bytes):
+        res = bytearray(str(len(input)) + ':', 'utf-8')
+
+        res.extend(input)
 
         return bytes(res)

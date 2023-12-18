@@ -1,17 +1,15 @@
-import utils.bencoding as bencoding
-from hashlib import sha1
+from utils.bencoding import Decoder, Encoder
+import hashlib
+import urllib.parse
 
 class MetaInfo:
-    def __init__(self, file_name):
+    def __init__(self, file_name: str):
         self.file_name = file_name
         self.multi_files = False
 
         with open(file_name, 'rb') as file:
-            self.file_contents = bencoding.Decoder(file.read()).decode()
+            self.file_contents = Decoder(file.read()).decode()
 
-        print(self.file_contents)
-
-    #TODO: info dict needs to be encoded as SHA1 hash?
     def parse_file(self):
         '''
         docs for understanding file structure
@@ -19,10 +17,15 @@ class MetaInfo:
         '''
 
         # first parse all the info that is consistent whether it's single file or multi file
-        self.announce_url = self.file_contents[b'announce']
+
+        # decode announce contents so it can be urlparsed as a string
+        decoded_announce = self.file_contents[b'announce'].decode()
+        self.announce_url = urllib.parse.urlparse(decoded_announce)
+
         self.info = self.file_contents[b'info']
+
         # info hash will be used for tracker later on
-        self.info_hash = sha1(bencoding.Encoder().encode(self.info)).digest()
+        self.info_hash = hashlib.sha1(Encoder().encode(self.info)).digest()
 
         # check for all optional contents
         if b'announce-list' in self.file_contents:
@@ -57,8 +60,3 @@ class MetaInfo:
         else:
             self.length = self.info[b'length']
             self.last_piece_length = self.length
-        
-
-
-        
-        
