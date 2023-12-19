@@ -56,22 +56,26 @@ class Tracker:
         '''
         used for UDP trackers - more efficient than HTTP due
         to decreased # of packets and packet size
+
+        docs for socket initiation
+        https://wiki.python.org/moin/UdpCommunication
+        https://docs.python.org/3/library/socket.html#socket-timeouts
         '''
 
         # SOCK_DGRAM is used for UDP connections
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        sock.settimeout(5)
 
-        # need IP address and port to send packet
+        # need IP address (IPv4) and port to send packet
         ip_address = socket.gethostbyname(self.meta_info.announce_url.hostname)
         port = self.meta_info.announce_url.port
 
         address = (ip_address, port)
 
         connection = UdpConnection()
-
         connect_response = connection.connect_request(sock, address)
-
-        # decoded_response = connect_response.decode()
+        decoded_resp = connection.parse_response(connect_response)
 
     def get_peers(self):
         scheme = self.meta_info.announce_url.scheme
