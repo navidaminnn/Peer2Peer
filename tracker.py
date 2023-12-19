@@ -21,14 +21,14 @@ class Tracker:
 
         self.peers = []
 
-    def __generate_peer_id(self):
+    def __generate_peer_id(self) -> bytes:
         '''
         docs for logic behind peer_id 
         https://wiki.theory.org/BitTorrentSpecification#peer_id
         '''
 
-        return '-NA0004-' + ''.join(
-            str(random.randint(0, 9)) for i in range(12))
+        return ('-NA0004-' + ''.join(
+            str(random.randint(0, 9)) for i in range(12))).encode()
     
     def http_request(self):
         '''
@@ -47,9 +47,12 @@ class Tracker:
         
         request = HttpRequest()
 
-        response_content = request.format_request(request_param, self.meta_info.announce_url)
+        response_content = request.format_request(request_param, 
+                                                  self.meta_info.announce_url)
+        
         decoded_response = Decoder(response_content).decode()
 
+        # obtain list of peers and interval - the 2 pieces of info we need
         peer_list, self.interval = request.parse_request(decoded_response)
 
         # list of peers is now obtained
@@ -78,8 +81,36 @@ class Tracker:
 
         connection = UdpConnection()
 
-        connect_response = connection.send_request(sock, address, connection.create_packet_conn)
+        connect_response = connection.send_request(sock, 
+                                                   address, 
+                                                   connection.create_packet_conn())
+        
         decoded_resp = connection.parse_connection(connect_response)
+
+        request_param = {
+            'connection_id' : decoded_resp['connection_id'],
+            'action' : 1, # 1 for announce
+            'transaction_id' : decoded_resp['transaction_id'],
+            'info_hash' : self.info_hash,
+            'peer_id' : self.peer_id,
+            'downloaded' : self.downloaded,
+            'left' : self.meta_info.length,
+            'uploaded' : self.uploaded,
+            'event' : 0,
+            'IP address' : 0,
+            'num_want' : -1,
+            'port' : self.port
+        }
+
+        ann_response = connection.send_request(sock, 
+                                               address, 
+                                               connection.create_packet_ann(request_param))
+        
+        decoded_ann = connection.parse_announce(ann_response)
+
+        # necessary information is now successfully obtained
+        self.interval = decoded_ann['interval']
+        self.peers.extend(decoded_ann['peers'])
 
     def get_peers(self):
         scheme = self.meta_info.announce_url.scheme

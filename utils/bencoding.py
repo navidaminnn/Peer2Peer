@@ -54,7 +54,6 @@ class Decoder:
         Determine the size of string/list
         '''
 
-        #TODO: figure out a more 'elegant' approach so we don't have to typecast the slice
         end_index = self.__value.find(SIZE_DELIMITER, self.__index)
         size = int(self.__value[self.__index:end_index])
 
@@ -83,7 +82,6 @@ class Decoder:
         # index is now set to next item in file
         self.__index = end_index + 1
 
-        #TODO: figure out a more 'elegant' approach so we don't have to typecast
         return int(decoded_bytes)
 
     def __decode_list(self) -> list:
