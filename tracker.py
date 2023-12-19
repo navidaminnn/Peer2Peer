@@ -32,7 +32,7 @@ class Tracker:
     
     def http_request(self):
         '''
-        used for HTTP trackers
+        used for HTTP(S) trackers
         '''
 
         request_param = {'info_hash' : self.info_hash,
@@ -49,8 +49,11 @@ class Tracker:
 
         response_content = request.format_request(request_param, self.meta_info.announce_url)
         decoded_response = Decoder(response_content).decode()
-        print(decoded_response[b'peers6'].decode('utf8'))
-        parsed_info = request.parse_request(decoded_response)
+
+        peer_list, self.interval = request.parse_request(decoded_response)
+
+        # list of peers is now obtained
+        self.peers.extend(peer_list)
 
     def udp_request(self):
         '''
@@ -74,13 +77,15 @@ class Tracker:
         address = (ip_address, port)
 
         connection = UdpConnection()
-        connect_response = connection.connect_request(sock, address)
-        decoded_resp = connection.parse_response(connect_response)
+
+        connect_response = connection.send_request(sock, address, connection.create_packet_conn)
+        decoded_resp = connection.parse_connection(connect_response)
 
     def get_peers(self):
         scheme = self.meta_info.announce_url.scheme
 
-        if scheme == 'http' or scheme == 'https':
+        # handle http/https/udp trackers
+        if scheme in 'https':
             self.http_request()
         elif scheme == 'udp':
             self.udp_request()
