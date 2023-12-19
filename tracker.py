@@ -1,6 +1,6 @@
 from metainfo import MetaInfo
-from connections.http.http_request import HttpRequest
-from connections.udp.udp_connection import UdpConnection
+from connections.http_request import HttpRequest
+from connections.udp_request import UdpRequest
 from utils.bencoding import Decoder
 import random
 import socket
@@ -79,7 +79,7 @@ class Tracker:
 
         address = (ip_address, port)
 
-        connection = UdpConnection()
+        connection = UdpRequest()
 
         connect_response = connection.send_request(sock, 
                                                    address, 

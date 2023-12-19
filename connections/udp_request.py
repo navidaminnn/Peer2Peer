@@ -4,7 +4,7 @@ import random
 import ipaddress
 import time
 
-class UdpConnection:
+class UdpRequest:
     def __init__(self):
         self.protocol_id = 0x41727101980
         self.action = 0
