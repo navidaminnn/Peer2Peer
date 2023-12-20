@@ -57,7 +57,6 @@ class Tracker:
         # obtain list of peers and interval - the 2 pieces of info we need
         peer_list, self.interval = request.parse_request(decoded_response)
 
-        # list of peers is now obtained
         self.peers.extend(peer_list)
 
     def udp_request(self):
@@ -98,9 +97,9 @@ class Tracker:
             'downloaded' : self.downloaded,
             'left' : self.meta_info.length,
             'uploaded' : self.uploaded,
-            'event' : 0,
-            'IP address' : 0,
-            'num_want' : -1,
+            'event' : 0, # 0 for none
+            'IP address' : 0, # default 
+            'num_want' : -1, # default
             'port' : self.port
         }
 
