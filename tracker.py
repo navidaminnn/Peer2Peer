@@ -20,6 +20,7 @@ class Tracker:
         self.downloaded = 0
 
         self.peers = []
+        self.interval = None
 
     def __generate_peer_id(self) -> bytes:
         '''
@@ -28,7 +29,8 @@ class Tracker:
         '''
 
         return ('-NA0004-' + ''.join(
-            str(random.randint(0, 9)) for i in range(12))).encode()
+            str(random.randint(0, 9)) for i in range(12))
+                ).encode()
     
     def http_request(self):
         '''
@@ -112,7 +114,7 @@ class Tracker:
         self.interval = decoded_ann['interval']
         self.peers.extend(decoded_ann['peers'])
 
-    def get_peers(self):
+    def fetch_peers(self):
         scheme = self.meta_info.announce_url.scheme
 
         # handle http/https/udp trackers
@@ -122,5 +124,3 @@ class Tracker:
             self.udp_request()
         else:
             raise Exception("Invalid scheme found in announce contents")
-        
-        return self.peers

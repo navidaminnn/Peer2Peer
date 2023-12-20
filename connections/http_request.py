@@ -77,8 +77,6 @@ class HttpRequest:
 
         peers_list = []
 
-        # TODO: is having the port delimited by a colon standard
-        # practice for IPv6? seems clunky as address itself uses colons
         for index in range(0, len(peers), 18):
             ip_bytes = peers[index : index + 16]
             port_bytes = peers[index + 16 : index + 18]
