@@ -26,6 +26,9 @@ class Tracker:
         '''
         docs for logic behind peer_id 
         https://wiki.theory.org/BitTorrentSpecification#peer_id
+
+        this is for creating the client's (our) peer ID that acts as a 
+        form of identification
         '''
 
         return ('-NA0004-' + ''.join(
@@ -117,7 +120,7 @@ class Tracker:
         scheme = self.meta_info.announce_url.scheme
 
         # handle http/https/udp trackers
-        if scheme in 'https':
+        if scheme == 'http' or scheme == 'https':
             self.http_request()
         elif scheme == 'udp':
             self.udp_request()

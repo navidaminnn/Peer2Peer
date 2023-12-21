@@ -30,14 +30,13 @@ class HttpRequest:
         '''
 
         peers = []
+        interval = response[b'interval']
 
         # assume it's compact in this case
         if b'peers' in response and type(response[b'peers']) is bytes:
             peers = self.__compact_peers(response[b'peers'])
-            interval = response[b'interval']
         elif b'peers6' in response and type(response[b'peers6']) is bytes:
             peers = self.__ipv6_peers(response[b'peers6'])
-            interval = response[b'interval']
         else:
             #TODO: add IPv6 compatability and IPv4 compatability for dict content
             raise TypeError('Not in compact mode - cannot be parsed')
@@ -78,11 +77,8 @@ class HttpRequest:
         peers_list = []
 
         for index in range(0, len(peers), 18):
-            ip_bytes = peers[index : index + 16]
-            port_bytes = peers[index + 16 : index + 18]
-
-            ip_address = str(ipaddress.IPv6Address(ip_bytes))
-            port = str(int.from_bytes(port_bytes))
+            ip_address = str(ipaddress.IPv6Address(peers[index : index + 16]))
+            port = str(int.from_bytes(peers[index + 16 : index + 18]))
 
             peers_list.append(':'.join([ip_address, port]))
 
