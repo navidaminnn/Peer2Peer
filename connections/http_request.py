@@ -32,14 +32,14 @@ class HttpRequest:
         peers = []
         interval = response[b'interval']
 
-        # assume it's compact in this case
         if b'peers' in response and type(response[b'peers']) is bytes:
             peers = self.__compact_peers(response[b'peers'])
         elif b'peers6' in response and type(response[b'peers6']) is bytes:
             peers = self.__ipv6_peers(response[b'peers6'])
+        elif b'peers' in response and type(response[b'peers']) is list:
+            peers = self.__dict_peers(response[b'peers'])
         else:
-            #TODO: add IPv6 compatability and IPv4 compatability for dict content
-            raise TypeError('Not in compact mode - cannot be parsed')
+            raise TypeError('Not a supported tracker response - cannot be parsed')
         
         return (peers, interval)
         
@@ -79,6 +79,22 @@ class HttpRequest:
         for index in range(0, len(peers), 18):
             ip_address = str(ipaddress.IPv6Address(peers[index : index + 16]))
             port = str(int.from_bytes(peers[index + 16 : index + 18]))
+
+            peers_list.append(':'.join([ip_address, port]))
+
+        return peers_list
+    
+    def __dict_peers(self, peers: list) -> list:
+        '''
+        fetches the list of peers when given in a 
+        list of OrderedDicts
+        '''
+
+        peers_list = []
+
+        for peer in peers:
+            ip_address = str(ipaddress.ip_address(peer[b'ip'].decode()))
+            port = str(peer[b'port'])
 
             peers_list.append(':'.join([ip_address, port]))
 

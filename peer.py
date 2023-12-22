@@ -1,7 +1,6 @@
 from metainfo import MetaInfo
 import struct
 import asyncio
-# from peer import Peer
 
 CHOKE = 0
 UNCHOKE = 1
@@ -28,7 +27,7 @@ class PeerConnection:
         self.peer_choking = True
         self.peer_interested = False
 
-        self.own_info_hash = info_hash
+        self.info_hash = info_hash
         self.own_peer_id = peer_id
 
         self.peer = Peer(peer_info)
@@ -41,15 +40,21 @@ class PeerConnection:
         establish initial conncetion to peer
         '''
 
-        self.reader, self.writer = await asyncio.open_connection(self.peer.host, 
+        self.reader, self.writer = await asyncio.open_connection(self.peer.host,
                                                                  self.peer.port)
 
         # as soon as connection is made, we want to send a handshake
-        self.send_handshake()
-        self.receive_handshake()
+        self.writer.write(self.send_handshake())
+        await self.writer.drain()
 
-        print("Peer's ID " + self.peer.peer_id)
-        print("Peer's info hash " + self.peer.info_hash)
+        # TODO: figure out if there's a more optimal buffer size
+        response = await self.reader.read(2**16)
+
+        # TODO: is this needed? if so, figure out cleaner way to handle than raising exception
+        if not response:
+            raise ConnectionError('Unable to receive handshake from peer')
+            
+        self.receive_handshake(response)
 
     def send_handshake(self):
         '''
@@ -64,32 +69,43 @@ class PeerConnection:
 
         BitTorrent standard protocol string is 
         'BitTorrent protocol'
+
+        total length is 68 bytes
         '''
 
-        return struct.pack('>B19sQ20s20s', *[
-            '19',
-            'BitTorrent protocol',
-            0,
-            self.own_info_hash,
+        return struct.pack('>B19s8x20s20s', *[
+            19,
+            b'BitTorrent protocol',
+            self.info_hash,
             self.own_peer_id
         ])
     
     def receive_handshake(self, response: bytes):
-        # unpack string legnth and use it to unpack rest of handshake
+        # unpack string length and use it to unpack rest of handshake
         pstrlen = struct.unpack('>B', response[:1])
 
-        pstr, reserved, info_hash, peer_id = struct.unpack('>%dsQ20s20s', pstrlen, response[1:])
+        pstr, reserved, info_hash, peer_id = struct.unpack('>%dsQ20s20s' % pstrlen, response[1:68])
 
-        if pstr != 'BitTorrent protocol':
+        # TODO: fix all of these if statements to call a proper
+        # connection closing function
+
+        if pstr != b'BitTorrent protocol':
             self.writer.close()
+            raise ConnectionError('Incorrect connection')
 
         # peer ID received should never match client peer ID
         if peer_id == self.own_peer_id:
             self.writer.close()
+            raise ConnectionError('Incorrect connection')
 
         # peer ID should never change for any given peer
         if self.peer.peer_id is not None and self.peer.peer_id != peer_id:
             self.writer.close()
+            raise ConnectionError('Incorrect connection')
+        
+        if info_hash != self.info_hash:
+            self.writer.close()
+            raise ConnectionError('Incorrect connection')
 
         self.peer.info_hash = info_hash
         self.peer.peer_id = peer_id
