@@ -28,7 +28,7 @@ class PeerConnection:
         self.peer_interested = False
 
         self.info_hash = info_hash
-        self.own_peer_id = peer_id
+        self.my_peer_id = peer_id
 
         self.peer = Peer(peer_info)
 
@@ -56,6 +56,9 @@ class PeerConnection:
             
         self.receive_handshake(response)
 
+        # print(f"Peer ID: {self.peer.peer_id}")
+        # print(f"Peer Info Hash: {self.peer.info_hash}")
+
     def send_handshake(self):
         '''
         docs on handshaking
@@ -77,7 +80,7 @@ class PeerConnection:
             19,
             b'BitTorrent protocol',
             self.info_hash,
-            self.own_peer_id
+            self.my_peer_id
         ])
     
     def receive_handshake(self, response: bytes):
@@ -97,6 +100,9 @@ class PeerConnection:
         if peer_id == self.own_peer_id:
             self.writer.close()
             raise ConnectionError('Incorrect connection')
+
+        # TODO: when HTTP response isn't in compact mode, make sure
+        # to save peer ID so that it can be verified here
 
         # peer ID should never change for any given peer
         if self.peer.peer_id is not None and self.peer.peer_id != peer_id:

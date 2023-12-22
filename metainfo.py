@@ -38,9 +38,15 @@ class MetaInfo:
             self.encoding = self.file_contents[b'encoding']
 
         # now check for everything in info dict
+        self.pieces = []
+        
+        # SHA1 hashes of length 20 for each piece
+        for piece in range(0, len(self.info[b'pieces'], 20)):
+            self.pieces.append(piece)
+
+        self.num_pieces = len(self.pieces) // 20
+
         self.piece_length = self.info[b'piece length']
-        self.pieces = self.info[b'pieces']
-        self.piece_num = len(self.pieces) // 20
         self.name = self.info[b'name']
 
         # check for multi-file specific contents in info dict
