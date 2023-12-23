@@ -41,7 +41,7 @@ class MetaInfo:
         self.pieces = []
         
         # SHA1 hashes of length 20 for each piece
-        for piece in range(0, len(self.info[b'pieces'], 20)):
+        for piece in range(0, len(self.info[b'pieces']), 20):
             self.pieces.append(piece)
 
         self.num_pieces = len(self.pieces) // 20
@@ -62,7 +62,7 @@ class MetaInfo:
                 self.length += file[b'length']
                 self.files.append({'length':file[b'length'], 'path':file[b'path']})
 
-            self.last_piece_length = self.length - (self.piece_length * (self.piece_num - 1))
+            self.last_piece_length = self.length - (self.piece_length * (self.num_pieces - 1))
         else:
             self.length = self.info[b'length']
             self.last_piece_length = self.length

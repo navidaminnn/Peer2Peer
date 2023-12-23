@@ -1,6 +1,7 @@
 from metainfo import MetaInfo
 import struct
 import asyncio
+from utils.piece_status import PieceStatus
 
 CHOKE = 0
 UNCHOKE = 1
@@ -21,7 +22,10 @@ class Peer:
         self.peer_id = None
 
 class PeerConnection:
-    def __init__(self, peer_info: str, info_hash: bytes, peer_id: bytes):
+    # optimal buffer size (for now, maybe change later?)
+    BUFFER_SIZE = 2**16
+
+    def __init__(self, peer_info: str, info_hash: bytes, peer_id: bytes, piece_status: PieceStatus):
         self.am_choking = True
         self.am_interested = False
         self.peer_choking = True
@@ -31,35 +35,34 @@ class PeerConnection:
         self.my_peer_id = peer_id
 
         self.peer = Peer(peer_info)
+        self.piece_status = piece_status
 
         self.reader = None
         self.writer = None
 
+        self.response = None
+
     async def connect(self):
         '''
-        establish initial conncetion to peer
+        establish initial connection to peer
+        and begin handshaking process
         '''
 
-        self.reader, self.writer = await asyncio.open_connection(self.peer.host,
-                                                                 self.peer.port)
+        await self.__open_connection()
 
         # as soon as connection is made, we want to send a handshake
-        self.writer.write(self.send_handshake())
-        await self.writer.drain()
+        await self.send_handshake()
 
-        # TODO: figure out if there's a more optimal buffer size
-        response = await self.reader.read(2**16)
+        # get remaining response after parsing peer's handshake
+        self.response = await self.receive_handshake()
 
-        # TODO: is this needed? if so, figure out cleaner way to handle than raising exception
-        if not response:
-            raise ConnectionError('Unable to receive handshake from peer')
-            
-        self.receive_handshake(response)
+        print(f"Peer ID: {self.peer.peer_id}")
+        print(f"Peer Info Hash: {self.peer.info_hash}")
+        print(f"Remaining response: {self.response}")
 
-        # print(f"Peer ID: {self.peer.peer_id}")
-        # print(f"Peer Info Hash: {self.peer.info_hash}")
+        self.handle_messages()
 
-    def send_handshake(self):
+    async def send_handshake(self):
         '''
         docs on handshaking
         https://wiki.theory.org/BitTorrentSpecification#Handshake
@@ -76,30 +79,38 @@ class PeerConnection:
         total length is 68 bytes
         '''
 
-        return struct.pack('>B19s8x20s20s', *[
+        handshake = struct.pack('>B19s8x20s20s', *[
             19,
             b'BitTorrent protocol',
             self.info_hash,
             self.my_peer_id
         ])
+
+        self.writer.write(handshake)
+        await self.writer.drain()
     
-    def receive_handshake(self, response: bytes):
+    async def receive_handshake(self):
+        response = await self.reader.read(self.BUFFER_SIZE) 
+
+        if not response:
+            raise ConnectionError('Unable to receive handshake from peer')
+
         # unpack string length and use it to unpack rest of handshake
         pstrlen = struct.unpack('>B', response[:1])
 
         pstr, reserved, info_hash, peer_id = struct.unpack('>%dsQ20s20s' % pstrlen, response[1:68])
 
-        # TODO: fix all of these if statements to call a proper
-        # connection closing function
+        # TODO: fix all of these if statements to properly
+        # close connection
 
         if pstr != b'BitTorrent protocol':
             self.writer.close()
-            raise ConnectionError('Incorrect connection')
+            return
 
         # peer ID received should never match client peer ID
-        if peer_id == self.own_peer_id:
+        if peer_id == self.my_peer_id:
             self.writer.close()
-            raise ConnectionError('Incorrect connection')
+            return
 
         # TODO: when HTTP response isn't in compact mode, make sure
         # to save peer ID so that it can be verified here
@@ -107,14 +118,60 @@ class PeerConnection:
         # peer ID should never change for any given peer
         if self.peer.peer_id is not None and self.peer.peer_id != peer_id:
             self.writer.close()
-            raise ConnectionError('Incorrect connection')
+            return
         
         if info_hash != self.info_hash:
             self.writer.close()
-            raise ConnectionError('Incorrect connection')
+            return
 
         self.peer.info_hash = info_hash
         self.peer.peer_id = peer_id
-    
-    def send_message(self):
-        pass
+
+        return response[68:]
+
+    async def __open_connection(self):
+        '''
+        used to create the connection with peer
+        '''
+
+        self.reader, self.writer = await asyncio.open_connection(self.peer.host,
+                                                                 self.peer.port)
+        
+    async def handle_messages(self):
+        '''
+        docs for different types of messages
+        https://wiki.theory.org/BitTorrentSpecification#Messages
+        '''
+
+        while True:
+            len, message_id = struct.unpack('>IB', self.response[:5])
+
+            self.response = self.response[5:]
+
+            if message_id == 0:
+                self.am_choking = True
+            elif message_id == 1:
+                self.am_choking = False
+            elif message_id == 2:
+                self.am_interested = True
+            elif message_id == 3:
+                self.am_interested = False
+            elif message_id == 4:
+                self.__handle_have()
+            elif message_id == 5:
+                self.__handle_bitfield()
+            elif message_id == 6:
+                self.__handle_request()
+            elif message_id == 7:
+                self.__handle_piece()
+            elif message_id == 8:
+                pass
+            elif message_id == 9:
+                pass
+            elif len == 0: # keep alive
+                pass
+
+            self.response = self.response[len:]
+
+    async def __handle_have(self):
+        index = struct.unpack('>I', self.response)
