@@ -2,6 +2,7 @@ import requests
 from collections import OrderedDict
 from urllib.parse import urlencode
 import ipaddress
+from utils.peer import Peer
 
 class HttpRequest:
     def format_request(self, request_param: dict, announce: tuple):
@@ -62,7 +63,7 @@ class HttpRequest:
             ip_address = str(ipaddress.IPv4Address(ip_bytes))
             port = str(int.from_bytes(port_bytes))
 
-            peers_list.append(':'.join([ip_address, port]))
+            peers_list.append(Peer(ip_address, port))
 
         return peers_list
     
@@ -80,7 +81,7 @@ class HttpRequest:
             ip_address = str(ipaddress.IPv6Address(peers[index : index + 16]))
             port = str(int.from_bytes(peers[index + 16 : index + 18]))
 
-            peers_list.append(':'.join([ip_address, port]))
+            peers_list.append(Peer(ip_address, port))
 
         return peers_list
     
@@ -96,6 +97,6 @@ class HttpRequest:
             ip_address = str(ipaddress.ip_address(peer[b'ip'].decode()))
             port = str(peer[b'port'])
 
-            peers_list.append(':'.join([ip_address, port]))
+            peers_list.append(Peer(ip_address, port))
 
         return peers_list

@@ -2,6 +2,7 @@ from metainfo import MetaInfo
 import struct
 import asyncio
 from utils.piece_status import PieceStatus
+from utils.peer import Peer
 
 CHOKE = 0
 UNCHOKE = 1
@@ -14,18 +15,11 @@ PIECE = 7
 CANCEL = 8
 PORT = 9
 
-class Peer:
-    def __init__(self, ip_address: str):
-        self.host, self.port = ip_address.rsplit(':', 1)
-
-        self.info_hash = None
-        self.peer_id = None
-
 class PeerConnection:
     # optimal buffer size (for now, maybe change later?)
     BUFFER_SIZE = 2**16
 
-    def __init__(self, peer_info: str, info_hash: bytes, peer_id: bytes, piece_status: PieceStatus):
+    def __init__(self, peer: Peer, info_hash: bytes, peer_id: bytes, piece_status: PieceStatus):
         self.am_choking = True
         self.am_interested = False
         self.peer_choking = True
@@ -34,7 +28,7 @@ class PeerConnection:
         self.info_hash = info_hash
         self.my_peer_id = peer_id
 
-        self.peer = Peer(peer_info)
+        self.peer = peer
         self.piece_status = piece_status
 
         self.reader = None
@@ -50,7 +44,7 @@ class PeerConnection:
 
         await self.__open_connection()
 
-        # as soon as connection is made, we want to send a handshake
+        # as soon as connection is made, we want to send a handshake 
         await self.send_handshake()
 
         # get remaining response after parsing peer's handshake
@@ -137,16 +131,20 @@ class PeerConnection:
         self.reader, self.writer = await asyncio.open_connection(self.peer.host,
                                                                  self.peer.port)
         
-    async def handle_messages(self):
+    def handle_messages(self):
         '''
         docs for different types of messages
         https://wiki.theory.org/BitTorrentSpecification#Messages
         '''
 
         while True:
+            # TODO: pass in a payload var into the functions that contains the specific message
+
             len, message_id = struct.unpack('>IB', self.response[:5])
 
             self.response = self.response[5:]
+
+            payload = self.response[:len-1]
 
             if message_id == 0:
                 self.am_choking = True
@@ -157,13 +155,13 @@ class PeerConnection:
             elif message_id == 3:
                 self.am_interested = False
             elif message_id == 4:
-                self.__handle_have()
+                self.__handle_have(payload)
             elif message_id == 5:
-                self.__handle_bitfield()
+                self.__handle_bitfield(payload)
             elif message_id == 6:
-                self.__handle_request()
+                self.__handle_request(payload)
             elif message_id == 7:
-                self.__handle_piece()
+                self.__handle_piece(payload)
             elif message_id == 8:
                 pass
             elif message_id == 9:
@@ -173,5 +171,24 @@ class PeerConnection:
 
             self.response = self.response[len:]
 
-    async def __handle_have(self):
-        index = struct.unpack('>I', self.response)
+    async def __handle_have(self, payload: bytes):
+        index = struct.unpack('>I', payload)
+        self.piece_status.update_peers_own(index, self.peer)
+
+    async def __handle_bitfield(self):
+        pass
+
+    async def __handle_request(self, payload: bytes):
+        index, begin, length = struct.unpack('>III', payload)
+
+        # TODO: send a piece message to fulfill the request
+
+    async def __handle_piece(self, payload: bytes):
+        block_len = len(payload) - 8
+
+        index, begin = struct.unpack('>II', payload[:8])
+        block = struct.unpack('%ds' % block_len, payload[8:])
+
+        # self.piece_status.update_ongoing_pieces(index)
+
+        # TODO: create file writer and write the block to the file    

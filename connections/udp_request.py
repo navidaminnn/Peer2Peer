@@ -3,6 +3,7 @@ import struct
 import random
 import ipaddress
 import time
+from utils.peer import Peer
 
 class UdpRequest:
     def __init__(self):
@@ -143,7 +144,7 @@ class UdpRequest:
             ip_address = str(ipaddress.IPv4Address(ip_bytes))
             port = str(int.from_bytes(port_bytes))
 
-            peers_list.append(':'.join([ip_address, port]))
+            peers_list.append(Peer(ip_address, port))
 
         # TODO: do we care about/need any of this aside from interval and peers?
         return {
