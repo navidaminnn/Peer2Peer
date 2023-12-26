@@ -1,5 +1,6 @@
 from utils.peer import Peer
 from metainfo import MetaInfo
+from piece import Piece
 
 class PieceStatus:
     '''
@@ -36,9 +37,20 @@ class PieceStatus:
 
     def update_ongoing_pieces(self, index: int):
         self.ongoing_pieces.append(self.pieces[index])
+        
+    def choose_next_piece(self, peer: Peer):
+        '''
+        picks a random piece that's missing & owned by the peer
+
+        TODO: implement a rarest-first algorithm to make torrent more effective
+        '''
+
+        missing_set = set(self.missing_pieces)
+        peer_set = set(self.peers_own[peer])
+
+        chosen_piece: Piece = missing_set.intersection(peer_set).pop()
+
+        return chosen_piece
     
-    # def bytes_downloaded(self) -> int:
-    #     return len(self.owned_pieces) * self.piece_length
-    
-    # def bytes_remaining(self) -> int:
-    #     return self.file_size - len(self.owned_pieces) * self.piece_length
+    def get_piece_index(self, piece: Piece):
+        return self.pieces.index(piece)

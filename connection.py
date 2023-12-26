@@ -3,17 +3,8 @@ import struct
 import asyncio
 from utils.piece_status import PieceStatus
 from utils.peer import Peer
-
-CHOKE = 0
-UNCHOKE = 1
-INTERESTED = 2
-NOT_INTERESTED = 3
-HAVE = 4
-BITFIELD = 5
-REQUEST = 6
-PIECE = 7
-CANCEL = 8
-PORT = 9
+from utils.piece import Piece
+import bitarray
 
 class PeerConnection:
     # optimal buffer size (for now, maybe change later?)
@@ -34,7 +25,7 @@ class PeerConnection:
         self.reader = None
         self.writer = None
 
-        self.response = None
+        self.response = b''
 
     async def connect(self):
         '''
@@ -54,7 +45,7 @@ class PeerConnection:
         print(f"Peer Info Hash: {self.peer.info_hash}")
         print(f"Remaining response: {self.response}")
 
-        self.handle_messages()
+        await self.handle_messages()
 
     async def send_handshake(self):
         '''
@@ -94,16 +85,13 @@ class PeerConnection:
 
         pstr, reserved, info_hash, peer_id = struct.unpack('>%dsQ20s20s' % pstrlen, response[1:68])
 
-        # TODO: fix all of these if statements to properly
-        # close connection
-
         if pstr != b'BitTorrent protocol':
-            self.writer.close()
+            self.__close_connection()
             return
 
         # peer ID received should never match client peer ID
         if peer_id == self.my_peer_id:
-            self.writer.close()
+            self.__close_connection()
             return
 
         # TODO: when HTTP response isn't in compact mode, make sure
@@ -111,11 +99,11 @@ class PeerConnection:
 
         # peer ID should never change for any given peer
         if self.peer.peer_id is not None and self.peer.peer_id != peer_id:
-            self.writer.close()
+            self.__close_connection()
             return
         
         if info_hash != self.info_hash:
-            self.writer.close()
+            self.__close_connection()
             return
 
         self.peer.info_hash = info_hash
@@ -131,17 +119,21 @@ class PeerConnection:
         self.reader, self.writer = await asyncio.open_connection(self.peer.host,
                                                                  self.peer.port)
         
-    def handle_messages(self):
+    async def __close_connection(self):
+        self.writer.close()
+        await self.writer.wait_closed()
+        
+    async def handle_messages(self):
         '''
         docs for different types of messages
         https://wiki.theory.org/BitTorrentSpecification#Messages
         '''
 
-        while True:
-            len = struct.unpack('>I', self.response[:1])
+        while True and len(self.response) != 0:
+            length = struct.unpack('>I', self.response[:1])
 
             # keep alive message
-            if len == 0:
+            if length == 0:
                 self.response = self.response[1:]
                 continue
 
@@ -149,7 +141,7 @@ class PeerConnection:
 
             self.response = self.response[5:]
 
-            payload = self.response[:len-1]
+            payload = self.response[:length-1]
 
             # for us to request pieces, we need to be interested & unchoked
             if message_id == 0:
@@ -173,14 +165,16 @@ class PeerConnection:
             elif message_id == 9:
                 pass
 
-            self.response = self.response[len-1:]
+            self.response = self.response[length-1:]
 
     async def __handle_have(self, payload: bytes):
         index = struct.unpack('>I', payload)
         self.piece_status.update_peers_own(index, self.peer)
 
-    async def __handle_bitfield(self):
-        pass
+    async def __handle_bitfield(self, payload: bytes):
+        bitfield = struct.unpack('>%ds' % len(payload), payload)
+
+        print(bitfield)
 
     async def __handle_request(self, payload: bytes):
         index, begin, length = struct.unpack('>III', payload)
@@ -199,3 +193,29 @@ class PeerConnection:
 
     async def __handle_cancel(self, payload: bytes):
         pass
+
+    async def __send_interested(self):
+        message = struct.pack('>IB', 1, 2)
+
+        self.writer.write(message)
+        await self.writer.drain()
+
+    async def __send_request(self):
+        # TODO: implement a rarest first downloading strategy instead of
+        # randomly choosing
+
+        chosen_piece = self.piece_status.choose_next_piece(self.peer)
+        index = self.piece_status.get_piece_index(chosen_piece)
+        begin = chosen_piece.block_to_download
+        length = chosen_piece.get_block_size()
+
+        message = struct.pack('>IBIII', *[
+            13,
+            6,
+            index,
+            begin,
+            length
+        ])
+
+        self.writer.write(message)
+        await self.writer.drain()
