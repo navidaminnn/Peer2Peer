@@ -129,7 +129,7 @@ class PeerConnection:
         https://wiki.theory.org/BitTorrentSpecification#Messages
         '''
 
-        while True and len(self.response) != 0:
+        while len(self.response) != 0:
             length = struct.unpack('>I', self.response[:1])
 
             # keep alive message
