@@ -138,38 +138,42 @@ class PeerConnection:
         '''
 
         while True:
-            # TODO: pass in a payload var into the functions that contains the specific message
+            len = struct.unpack('>I', self.response[:1])
 
-            len, message_id = struct.unpack('>IB', self.response[:5])
+            # keep alive message
+            if len == 0:
+                self.response = self.response[1:]
+                continue
+
+            message_id = struct.unpack('>B', self.response[1:5])
 
             self.response = self.response[5:]
 
             payload = self.response[:len-1]
 
+            # for us to request pieces, we need to be interested & unchoked
             if message_id == 0:
                 self.am_choking = True
             elif message_id == 1:
                 self.am_choking = False
             elif message_id == 2:
-                self.am_interested = True
+                self.peer_interested = True
             elif message_id == 3:
-                self.am_interested = False
+                self.peer_interested = False
             elif message_id == 4:
                 self.__handle_have(payload)
             elif message_id == 5:
                 self.__handle_bitfield(payload)
-            elif message_id == 6:
+            elif message_id == 6: # TODO: we're currently only leechers
                 self.__handle_request(payload)
             elif message_id == 7:
                 self.__handle_piece(payload)
-            elif message_id == 8:
-                pass
+            elif message_id == 8: # TODO: we're currently only leechers
+                self.__handle_cancel(payload) 
             elif message_id == 9:
                 pass
-            elif len == 0: # keep alive
-                pass
 
-            self.response = self.response[len:]
+            self.response = self.response[len-1:]
 
     async def __handle_have(self, payload: bytes):
         index = struct.unpack('>I', payload)
@@ -192,3 +196,6 @@ class PeerConnection:
         # self.piece_status.update_ongoing_pieces(index)
 
         # TODO: create file writer and write the block to the file    
+
+    async def __handle_cancel(self, payload: bytes):
+        pass

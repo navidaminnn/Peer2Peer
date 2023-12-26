@@ -1,6 +1,7 @@
 from utils.bencoding import Decoder, Encoder
 import hashlib
 import urllib.parse
+from utils.piece import Piece
 
 class MetaInfo:
     def __init__(self, file_name: str):
@@ -38,14 +39,7 @@ class MetaInfo:
             self.encoding = self.file_contents[b'encoding']
 
         # now check for everything in info dict
-        self.pieces = []
-        
-        # SHA1 hashes of length 20 for each piece
-        for piece in range(0, len(self.info[b'pieces']), 20):
-            self.pieces.append(piece)
-
-        self.num_pieces = len(self.pieces) // 20
-
+        self.num_pieces = len(self.info[b'pieces']) // 20
         self.piece_length = self.info[b'piece length']
         self.name = self.info[b'name']
 
@@ -61,8 +55,23 @@ class MetaInfo:
             for file in self.info[b'files']:
                 self.length += file[b'length']
                 self.files.append({'length':file[b'length'], 'path':file[b'path']})
-
-            self.last_piece_length = self.length - (self.piece_length * (self.num_pieces - 1))
         else:
             self.length = self.info[b'length']
-            self.last_piece_length = self.length
+
+        self.last_piece_length = self.length - (self.piece_length * (self.num_pieces - 1))
+
+        # create list of Piece objects
+        self.pieces = []
+        
+        # SHA1 hashes of length 20 for each piece
+        for i in range(0, len(self.info[b'pieces']), 20):
+            if i + 20 >= len(self.info[b'pieces']):
+                is_final_piece = True
+                piece_length = self.last_piece_length
+            else:
+                is_final_piece = False
+                piece_length = self.piece_length
+
+            piece_hash = self.info[b'pieces'][i:i+20]
+
+            self.pieces.append(Piece(piece_hash, piece_length, is_final_piece))

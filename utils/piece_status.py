@@ -1,4 +1,4 @@
-from peer import Peer
+from utils.peer import Peer
 from metainfo import MetaInfo
 
 class PieceStatus:
@@ -7,17 +7,17 @@ class PieceStatus:
     which peers own which pieces
     '''
 
-    def __init__(self, pieces: list, peers: list, meta_info: MetaInfo):
-        self.pieces = pieces
-        self.peers = peers
+    def __init__(self, peers: list, meta_info: MetaInfo):
         self.meta_info = meta_info
+        self.pieces = meta_info.pieces
+        self.peers = peers
 
         self.piece_length = meta_info.piece_length
         self.last_piece_length = meta_info.last_piece_length
         self.file_size = meta_info.length
 
         self.owned_pieces = []
-        self.missing_pieces = pieces
+        self.missing_pieces = self.pieces
         self.ongoing_pieces = []
 
         self.peers_own = {peer : [] for peer in self.peers}
@@ -30,15 +30,11 @@ class PieceStatus:
         self.peers_own[peer].append(self.pieces[index])
 
     def update_completed_pieces(self, index: int):
-        # TODO: would index be the right parameter or would it be piece hash itself?
-
         self.owned_pieces.append(self.pieces[index])
         self.missing_pieces.remove(self.pieces[index])
         self.ongoing_pieces.remove(self.pieces[index])
 
     def update_ongoing_pieces(self, index: int):
-        # TODO: same as above for completed pieces
-
         self.ongoing_pieces.append(self.pieces[index])
     
     # def bytes_downloaded(self) -> int:

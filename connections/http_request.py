@@ -5,7 +5,7 @@ import ipaddress
 from utils.peer import Peer
 
 class HttpRequest:
-    def format_request(self, request_param: dict, announce: tuple):
+    def format_request(self, request_param: dict, announce: tuple) -> bytes:
         '''
         docs for understanding url formatting
         https://www.rfc-editor.org/rfc/rfc1808.html#section-2.1
@@ -24,10 +24,6 @@ class HttpRequest:
 
         docs for understanding response
         https://wiki.theory.org/BitTorrentSpecification#Tracker_Response
-
-        based on testing trackers, seems like if dict contains 'peers6'
-        it's considered as IPv6, preventing it from being compacted as
-        compact mode condenses IP into 4 bytes
         '''
 
         peers = []
