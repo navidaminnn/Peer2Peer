@@ -1,7 +1,7 @@
 from utils.bencoding import Decoder, Encoder
 import hashlib
 import urllib.parse
-from utils.piece import Piece
+from models.piece import Piece
 
 class MetaInfo:
     def __init__(self, file_name: str):
