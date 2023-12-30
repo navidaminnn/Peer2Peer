@@ -3,7 +3,7 @@ import struct
 import random
 import ipaddress
 import time
-from utils.peer import Peer
+from models.peer import Peer
 
 class UdpRequest:
     def __init__(self):

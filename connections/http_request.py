@@ -2,7 +2,7 @@ import requests
 from collections import OrderedDict
 from urllib.parse import urlencode
 import ipaddress
-from utils.peer import Peer
+from models.peer import Peer
 
 class HttpRequest:
     def format_request(self, request_param: dict, announce: tuple) -> bytes:
