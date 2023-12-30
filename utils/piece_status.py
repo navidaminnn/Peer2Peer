@@ -1,6 +1,6 @@
 from utils.peer import Peer
 from metainfo import MetaInfo
-from piece import Piece
+from utils.piece import Piece
 
 class PieceStatus:
     '''
@@ -12,33 +12,36 @@ class PieceStatus:
         self.meta_info = meta_info
         self.pieces = meta_info.pieces
         self.peers = peers
+        self.num_pieces = meta_info.num_pieces
 
         self.piece_length = meta_info.piece_length
         self.last_piece_length = meta_info.last_piece_length
         self.file_size = meta_info.length
 
         self.owned_pieces = []
-        self.missing_pieces = self.pieces
+        self.missing_pieces = self.pieces.copy()
         self.ongoing_pieces = []
 
         self.peers_own = {peer : [] for peer in self.peers}
 
     def update_peers_own(self, index: int, peer: Peer):
         '''
-        update which peers own which pieces using index of piece
+        update peers that own missing pieces using index of piece
         '''
 
-        self.peers_own[peer].append(self.pieces[index])
+        piece = self.pieces[index]
+
+        self.peers_own[peer].append(piece)
 
     def update_completed_pieces(self, index: int):
-        self.owned_pieces.append(self.pieces[index])
-        self.missing_pieces.remove(self.pieces[index])
         self.ongoing_pieces.remove(self.pieces[index])
+        self.owned_pieces.append(self.pieces[index])
 
     def update_ongoing_pieces(self, index: int):
+        self.missing_pieces.remove(self.pieces[index])
         self.ongoing_pieces.append(self.pieces[index])
         
-    def choose_next_piece(self, peer: Peer):
+    def choose_next_piece(self, peer: Peer) -> Piece | None:
         '''
         picks a random piece that's missing & owned by the peer
 
@@ -48,9 +51,17 @@ class PieceStatus:
         missing_set = set(self.missing_pieces)
         peer_set = set(self.peers_own[peer])
 
-        chosen_piece: Piece = missing_set.intersection(peer_set).pop()
+        desired_pieces = missing_set.intersection(peer_set)
 
-        return chosen_piece
+        if len(desired_pieces) == 0:
+            return None
+
+        return desired_pieces.pop()
     
-    def get_piece_index(self, piece: Piece):
+    def get_piece_index(self, piece: Piece) -> int:
         return self.pieces.index(piece)
+    
+    def download_completed(self) -> bool:
+        return (len(self.missing_pieces) == 0 and
+                len(self.ongoing_pieces) == 0 and
+                len(self.owned_pieces) == len(self.pieces))

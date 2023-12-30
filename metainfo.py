@@ -41,7 +41,7 @@ class MetaInfo:
         # now check for everything in info dict
         self.num_pieces = len(self.info[b'pieces']) // 20
         self.piece_length = self.info[b'piece length']
-        self.name = self.info[b'name']
+        self.name = self.info[b'name'].decode()
 
         # check for multi-file specific contents in info dict
         if b'files' in self.info:
