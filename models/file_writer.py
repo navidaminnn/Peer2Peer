@@ -1,5 +1,5 @@
 from metainfo import MetaInfo
-from utils.piece_status import PieceStatus
+from models.piece_status import PieceStatus
 import os
 
 class FileWriter:

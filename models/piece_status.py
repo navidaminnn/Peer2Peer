@@ -1,6 +1,6 @@
-from utils.peer import Peer
+from models.peer import Peer
 from metainfo import MetaInfo
-from utils.piece import Piece
+from models.piece import Piece
 
 class PieceStatus:
     '''
