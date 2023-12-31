@@ -41,21 +41,31 @@ class PieceStatus:
         self.missing_pieces.remove(self.pieces[index])
         self.ongoing_pieces.append(self.pieces[index])
         
-    def choose_next_piece(self, peer: Peer) -> Piece | None:
-        '''
-        picks a random piece that's missing & owned by the peer
+    # def choose_next_piece(self, peer: Peer) -> Piece | None:
+    #     '''
+    #     picks a random piece that's missing & owned by the peer
 
-        TODO: implement a rarest-first algorithm to make torrent more effective
-        '''
+    #     TODO: implement a rarest-first algorithm to make torrent more effective
+    #     '''
 
-        missing_set = set(self.missing_pieces)
-        peer_set = set(self.peers_own[peer])
+    #     missing_set = set(self.missing_pieces)
+    #     peer_set = set(self.peers_own[peer])
 
-        desired_pieces = missing_set.intersection(peer_set)
+    #     desired_pieces = missing_set.intersection(peer_set)
+
+    #     if len(desired_pieces) == 0:
+    #         return None
+
+    #     return desired_pieces.pop()
+        
+    import bitstring
+
+    def choose_next_piece(self, bitfield: bitstring.BitArray) -> Piece | None:
+        desired_pieces = {piece for bit, piece in zip(bitfield, self.missing_pieces) if bit}
 
         if len(desired_pieces) == 0:
             return None
-
+        
         return desired_pieces.pop()
     
     def get_piece_index(self, piece: Piece) -> int:

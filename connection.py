@@ -258,6 +258,7 @@ from twisted.internet.protocol import Protocol, Factory
 class PeerProtocol(Protocol):
     def __init__(self, factory, peer: Peer):
         self.factory = factory
+        self.peer = peer
 
         self.am_choked = True
         self.am_interested = False
@@ -265,32 +266,34 @@ class PeerProtocol(Protocol):
         self.peer_choked = True
         self.peer_interested = False
 
-        self.peer = peer
-
         self.response = b''
+        self.remaining_message_len = 0
 
         self.have_handshaked = False
         self.peer_shared_pieces = False
 
         self.curr_piece = None
 
+        self.bitfield = bitstring.BitArray(self.factory.piece_status.num_pieces)
+
     def connectionMade(self):
         '''
         once a connection is made, initiate by sending a handshake
         '''
-
-        self.send_handshake()
+        # print("Connection made")
+        # self.send_handshake()
 
     def connectionLost(self, reason):
-        # TODO: figure out what I want to do in this case
-        print("Connection has been lost")
-        print(reason)
+        if self.curr_piece:
+            print("Connection has been lost at index %d" % self.curr_piece.block_index)
+        else:
+            print("Connection has been lost")
 
     def dataReceived(self, data: bytes) -> None:
         if not self.have_handshaked:
             self.receive_handshake(data)
         else:
-            self.handle_messages(data)
+            self.parse_message(data)
 
     def send_handshake(self):
         '''
@@ -347,52 +350,88 @@ class PeerProtocol(Protocol):
 
         self.send_interested()
 
-    def handle_messages(self, response: bytes):
-        while len(response) >= 4:
+    def parse_message(self, response: bytes):
+        '''
+        sometimes messages aren't sent in full so we need to parse
+        the message and send once we have the full message
+        '''
 
+        # if it's not a valid message
+        if len(response) < 4:
+            return
+        
+        # if it's a new message
+        if self.remaining_message_len == 0:
             length = struct.unpack('>I', response[:4])[0]
-
-            response = response[4:]
 
             # keep alive message
             if length == 0:
-                continue
+                return
+            elif length == 1: # message with no payload - just message_id
+                self.handle_message(response[:5])
+                self.parse_message(response[5:])
+            else: # full message 
+                # there's overflow if the expected length exceeds actual length
+                overflow = length > len(response[4:])
 
-            message_id = struct.unpack('>B', response[:1])[0]
-            payload = response[1:length]
+                if overflow:
+                    self.remaining_message_len = length - len(response[4:])
+                    self.response += response
+                else:
+                    self.handle_message(response[:length + 4])
+                    self.parse_message(response[length + 4:])
+        else: # if it's continuing previous message
+            overflow = self.remaining_message_len > len(response)
 
-            response = response[length:]
+            if overflow:
+                self.remaining_message_len -= len(response)
+                self.response += response
+            else:
+                self.response += response[:self.remaining_message_len]
+                self.handle_message(self.response)
 
-            print(f"Length: {length}")
-            print(f"Message ID: {message_id}")
-            print(f"Payload Size: {len(payload)}")
+                new_message = response[self.remaining_message_len:]
+                self.remaining_message_len = 0
+                self.response = b''
 
-            # for us to request pieces, we need to be interested & unchoked
-            if message_id == 0:
-                self.am_choked = True
-            elif message_id == 1:
-                self.am_choked = False
-            elif message_id == 2:
-                self.peer_interested = True
-            elif message_id == 3:
-                self.peer_interested = False
-            elif message_id == 4:
-                self.handle_have(payload)
-                self.peer_shared_pieces = True
-            elif message_id == 5:
-                self.handle_bitfield(payload)
-                self.peer_shared_pieces = True
-            elif message_id == 6: # TODO: we're currently only leechers
-                self.handle_request(payload)
-            elif message_id == 7:
-                self.handle_piece(payload)
-            elif message_id == 8: # TODO: we're currently only leechers
-                self.handle_cancel(payload) 
-            elif message_id == 9:
-                pass
+                self.parse_message(new_message)
 
-            if self.am_interested and not self.am_choked and self.peer_shared_pieces:
-                self.send_request()
+
+    def handle_message(self, response: bytes):
+        length, message_id = struct.unpack('>IB', response[:5])
+
+        payload = response[5:]
+
+        # print(f"Length: {length}")
+        # print(f"Message ID: {message_id}")
+        # print(f"Payload Size: {len(payload)}")
+
+        # for us to request pieces, we need to be interested & unchoked
+        if message_id == 0:
+            self.am_choked = True
+        elif message_id == 1:
+            self.am_choked = False
+        elif message_id == 2:
+            self.peer_interested = True
+        elif message_id == 3:
+            self.peer_interested = False
+        elif message_id == 4:
+            self.handle_have(payload)
+            self.peer_shared_pieces = True
+        elif message_id == 5:
+            self.handle_bitfield(payload)
+            self.peer_shared_pieces = True
+        elif message_id == 6: # TODO: we're currently only leechers
+            self.handle_request(payload)
+        elif message_id == 7:
+            self.handle_piece(payload)
+        elif message_id == 8: # TODO: we're currently only leechers
+            self.handle_cancel(payload) 
+        elif message_id == 9:
+            pass
+
+        if self.am_interested and not self.am_choked and self.peer_shared_pieces:
+            self.send_request()
 
     def send_interested(self):
         message = struct.pack('>IB', 1, 2)
@@ -402,22 +441,28 @@ class PeerProtocol(Protocol):
 
     def handle_have(self, payload: bytes):
         index = struct.unpack('>I', payload)[0]
-        self.factory.piece_status.update_peers_own(index, self.peer)
+        # self.factory.piece_status.update_peers_own(index, self.peer)
+
+        self.bitfield[index] = 1
 
         # make sure we're still interested
         if not self.am_interested:
             self.send_interested()
 
     def handle_bitfield(self, payload: bytes):
-        piece_bits = bitstring.BitArray(payload).bin
+        # piece_bits = bitstring.BitArray(payload).bin
 
-        for bit in piece_bits:
-            index = int(bit)
+        # for bit in piece_bits:
+        #     index = int(bit)
 
-            if piece_bits[index]:
-                self.factory.piece_status.update_peers_own(index, 
-                                                           self.peer)
+        #     if piece_bits[index]:
+        #         self.factory.piece_status.update_peers_own(index, 
+        #                                                    self.peer)
                 
+        piece_bits = bitstring.BitArray(payload)
+
+        self.bitfield = piece_bits[:piece_bits.len] + self.bitfield[piece_bits.len:]
+
         # send interested message after receiving bitfield
         if not self.am_interested:
             self.send_interested()
@@ -427,31 +472,36 @@ class PeerProtocol(Protocol):
         unpack the block and update piece status
         '''
 
-        block_len = len(payload) - 8
+        # TODO: do something with this / clean it up
+        if (len(payload) - 8) % self.curr_piece.BLOCK_SIZE != 0:
+            return
+        
+        # print("BLOCK INDEX %d / %d total blocks" % (self.curr_piece.block_index, self.curr_piece.num_blocks))
 
         index, begin = struct.unpack('>II', payload[:8])
-        block = struct.unpack('%ds' % block_len, payload[8:])[0]
 
         # write to the file
-        self.factory.file_writer.write(index, begin, block)
+        # self.factory.file_writer.write(index, begin, block)
 
         self.curr_piece.block_index += 1
 
         # if we've downloaded the file, we're done with it
         if self.curr_piece.is_downloaded():
+            print("FINISHED PIECE")
             self.factory.piece_status.update_completed_pieces(index)
             self.curr_piece = None
 
     def send_request(self):
         new_piece = False
-        
-        if self.curr_piece is None or self.curr_piece.is_downloaded():
-            self.curr_piece = self.factory.piece_status.choose_next_piece(self.peer)
 
-            # return early if there're no more missing pieces offered by peer
+        if self.curr_piece is None or self.curr_piece.is_downloaded():
+            # self.curr_piece = self.factory.piece_status.choose_next_piece(self.peer)
+            self.curr_piece = self.factory.piece_status.choose_next_piece(self.bitfield)
+
+            # if there're no more missing pieces offered by peer
             if self.curr_piece is None:
-                # TODO: would we want to also become uninterested in this case? 
-                # at least until we receive a have message
+                # we're no longer interested as peer owns no desired pieces
+                self.am_interested = False
                 return
             
             new_piece = True
@@ -462,6 +512,9 @@ class PeerProtocol(Protocol):
         index = self.factory.piece_status.get_piece_index(self.curr_piece)
         begin = self.curr_piece.get_byte_offset()
         length = self.curr_piece.get_block_size()
+
+        # print("Requesting Offset: %d" % begin)
+        # print("Requesting a block size of: %d" % length)
 
         if new_piece:
             self.factory.piece_status.update_ongoing_pieces(index)
@@ -483,7 +536,6 @@ class PeerProtocol(Protocol):
     # TODO: currently only leechers
     def handle_cancel(self, payload: bytes):
         pass
-
 
 class PeerFactory(Factory):
     def __init__(self, peers: list, 

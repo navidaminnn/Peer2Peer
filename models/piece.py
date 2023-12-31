@@ -10,12 +10,12 @@ class Piece:
 
         self.num_blocks = math.ceil(self.length / self.BLOCK_SIZE)
 
-        self.final_block_size = self.length % self.BLOCK_SIZE
+        self.final_block_size = self.length - ((self.num_blocks - 1) * self.BLOCK_SIZE)
 
         # index of next block to download
         self.block_index = 0
 
-    def get_block_size(self):
+    def get_block_size(self) -> int:
         '''
         return appropriate block size depending on
         if it's the final block in the piece or not
@@ -26,14 +26,14 @@ class Piece:
 
         return self.BLOCK_SIZE
     
-    def is_equal_hash(self, hash: bytes):
+    def is_equal_hash(self, hash: bytes) -> bool:
         return hash == self.hash
     
-    def on_final_block(self):
+    def on_final_block(self) -> bool:
         return self.block_index == self.num_blocks - 1
     
-    def is_downloaded(self):
+    def is_downloaded(self) -> bool:
         return self.block_index >= self.num_blocks
     
-    def get_byte_offset(self):
+    def get_byte_offset(self) -> int:
         return self.block_index * self.BLOCK_SIZE
