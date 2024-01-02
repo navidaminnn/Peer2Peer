@@ -255,8 +255,46 @@ import bitstring
 
 from twisted.internet.protocol import Protocol, Factory
 
+class PeerFactory(Factory):
+    def __init__(self, 
+                 peers: list, 
+                 meta_info: MetaInfo, 
+                 peer_id: bytes):
+        
+        self.info_hash = meta_info.info_hash
+        self.my_peer_id = peer_id
+
+        self.peers = peers
+
+        self.pieces = meta_info.pieces
+        self.num_pieces = meta_info.num_pieces
+        self.file_size = meta_info.length
+
+        self.completed_pieces = bitstring.BitArray(self.num_pieces)
+        self.ongoing_pieces = bitstring.BitArray(self.num_pieces)
+        self.missing_pieces = bitstring.BitArray(self.num_pieces)
+        # bitarray should start with all 1s as all pieces are missing
+        self.missing_pieces.invert() 
+
+    def buildProtocol(self, addr):
+        return PeerProtocol(self)
+    
+    def update_ongoing_pieces(self, index: int):
+        self.ongoing_pieces[index] = 1
+        self.missing_pieces[index] = 0
+
+        # self.ongoing_pieces.invert(index)
+        # self.missing_pieces.invert(index)
+
+    def update_completed_pieces(self, index: int):
+        self.completed_pieces[index] = 1
+        self.ongoing_pieces[index] = 0
+
+        # self.completed_pieces.invert(index)
+        # self.ongoing_pieces.invert(index)
+
 class PeerProtocol(Protocol):
-    def __init__(self, factory, peer: Peer):
+    def __init__(self, factory: PeerFactory, peer: Peer):
         self.factory = factory
         self.peer = peer
 
@@ -274,7 +312,7 @@ class PeerProtocol(Protocol):
 
         self.curr_piece = None
 
-        self.bitfield = bitstring.BitArray(self.factory.piece_status.num_pieces)
+        self.bitfield = bitstring.BitArray(self.factory.num_pieces)
 
     def connectionMade(self):
         '''
@@ -536,21 +574,3 @@ class PeerProtocol(Protocol):
     # TODO: currently only leechers
     def handle_cancel(self, payload: bytes):
         pass
-
-class PeerFactory(Factory):
-    def __init__(self, peers: list, 
-                 info_hash: bytes, 
-                 peer_id: bytes, 
-                 piece_status: PieceStatus, 
-                 file_writer: FileWriter):
-        
-        self.info_hash = info_hash
-        self.my_peer_id = peer_id
-
-        self.piece_status = piece_status
-        self.file_writer = file_writer
-
-        self.peers = peers
-
-    def buildProtocol(self, addr):
-        return PeerProtocol(self)

@@ -3,7 +3,8 @@ import math
 class Piece:
     BLOCK_SIZE = 2**14
 
-    def __init__(self, piece_hash: bytes, length: int, is_final: bool):
+    def __init__(self, index: int, piece_hash: bytes, length: int, is_final: bool):
+        self.index = index
         self.hash = piece_hash
         self.length = length
         self.is_final = is_final

@@ -73,5 +73,6 @@ class MetaInfo:
                 piece_length = self.piece_length
 
             piece_hash = self.info[b'pieces'][i:i+20]
+            index = i // 20
 
-            self.pieces.append(Piece(piece_hash, piece_length, is_final_piece))
+            self.pieces.append(Piece(index, piece_hash, piece_length, is_final_piece))
