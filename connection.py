@@ -1,266 +1,19 @@
 from metainfo import MetaInfo
 import struct
-from models.piece_status import PieceStatus
 from models.peer import Peer
 from models.piece import Piece
-from models.file_writer import FileWriter
 import bitstring
-
-# class PeerConnection:
-#     # optimal buffer size (for now, maybe change later?)
-#     BUFFER_SIZE = 2**20
-
-#     def __init__(self, peer: Peer, info_hash: bytes, peer_id: bytes, piece_status: PieceStatus, file_writer: FileWriter):
-#         self.am_choking = True
-#         self.am_interested = False
-#         self.peer_choking = True
-#         self.peer_interested = False
-
-#         self.file_writer = file_writer
-
-#         self.info_hash = info_hash
-#         self.my_peer_id = peer_id
-
-#         self.peer = peer
-#         self.piece_status = piece_status
-
-#         self.reader = None
-#         self.writer = None
-
-#         self.response = b''
-
-#         self.curr_piece = None
-#         self.know_owned_pieces = False
-
-#     async def connect(self):
-#         '''
-#         establish initial connection to peer
-#         and begin handshaking process
-#         '''
-
-#         await self.__open_connection()
-
-#         # as soon as connection is made, we want to send a handshake 
-#         await self.__send_handshake()
-
-#         # get remaining response after parsing peer's handshake
-#         self.response = await self.__receive_handshake()
-
-#         print(f"Successfully connected: Peer ID is {self.peer.peer_id}")
-
-#         await self.__send_interested()
-
-#         await self.__handle_messages()
-
-#     async def __send_handshake(self):
-#         '''
-#         docs on handshaking
-#         https://wiki.theory.org/BitTorrentSpecification#Handshake
-
-#         - 1 byte for protocol string length
-#         - N bytes for protocol string
-#         - 8 bytes for reserved space
-#         - 20 bytes for info hash
-#         - 20 bytes for peer id
-
-#         BitTorrent standard protocol string is 
-#         'BitTorrent protocol'
-
-#         total length is 68 bytes
-#         '''
-
-#         handshake = struct.pack('>B19s8x20s20s', *[
-#             19,
-#             b'BitTorrent protocol',
-#             self.info_hash,
-#             self.my_peer_id
-#         ])
-
-#         self.writer.write(handshake)
-#         await self.writer.drain()
-    
-#     async def __receive_handshake(self):
-#         response = await asyncio.wait_for(self.reader.readexactly(1), 180)
-
-#         pstrlen = struct.unpack('>B', response)[0]
-
-#         response = await asyncio.wait_for(self.reader.readexactly(pstrlen + 48), 180)
-
-#         pstr, reserved, info_hash, peer_id = struct.unpack('>%dsQ20s20s' % pstrlen, response)
-
-#         if pstr != b'BitTorrent protocol':
-#             self.close_connection()
-#             return
-
-#         # peer ID received should never match client peer ID
-#         if peer_id == self.my_peer_id:
-#             self.close_connection()
-#             return
-
-#         # TODO: when HTTP response isn't in compact mode, make sure
-#         # to save peer ID so that it can be verified here
-
-#         # peer ID should never change for any given peer
-#         if self.peer.peer_id is not None and self.peer.peer_id != peer_id:
-#             self.close_connection()
-#             return
-        
-#         if info_hash != self.info_hash:
-#             self.close_connection()
-#             return
-
-#         self.peer.info_hash = info_hash
-#         self.peer.peer_id = peer_id
-
-#         return response[68:]
-
-#     async def __open_connection(self):
-#         '''
-#         used to create the connection with peer
-#         '''
-
-#         self.reader, self.writer = await asyncio.open_connection(self.peer.host,
-#                                                                  self.peer.port)
-        
-#     async def close_connection(self):
-#         self.writer.close()
-#         await self.writer.wait_closed()
-        
-#     async def __handle_messages(self):
-#         '''
-#         docs for different types of messages
-#         https://wiki.theory.org/BitTorrentSpecification#Messages
-#         '''
-
-#         while True:
-#             response = await asyncio.wait_for(self.reader.readexactly(4), 180)
-
-#             length = struct.unpack('>I', response)[0]
-
-#             # keep alive message
-#             if length == 0:
-#                 continue
-
-#             response = await asyncio.wait_for(self.reader.readexactly(length), 180)
-
-#             message_id = struct.unpack('>B', response[:1])[0]
-#             payload = response[1:]
-
-#             # print(f"Length: {length}")
-#             # print(f"Message ID: {message_id}")
-#             # print(f"Payload Size: {len(payload)}")
-
-#             # for us to request pieces, we need to be interested & unchoked
-#             if message_id == 0:
-#                 self.am_choking = True
-#             elif message_id == 1:
-#                 self.am_choking = False
-#             elif message_id == 2:
-#                 self.peer_interested = True
-#             elif message_id == 3:
-#                 self.peer_interested = False
-#             elif message_id == 4:
-#                 await self.__handle_have(payload)
-#                 self.know_owned_pieces = True
-#             elif message_id == 5:
-#                 await self.__handle_bitfield(payload)
-#                 self.know_owned_pieces = True
-#             elif message_id == 6: # TODO: we're currently only leechers
-#                 await self.__handle_request(payload)
-#             elif message_id == 7:
-#                 await self.__handle_piece(payload)
-#             elif message_id == 8: # TODO: we're currently only leechers
-#                 await self.__handle_cancel(payload) 
-#             elif message_id == 9:
-#                 pass
-
-#             if self.am_interested and not self.am_choking and self.know_owned_pieces:
-#                 await self.__send_request()
-
-#     async def __handle_have(self, payload: bytes):
-#         index = struct.unpack('>I', payload)[0]
-#         self.piece_status.update_peers_own(index, self.peer)
-
-#     async def __handle_bitfield(self, payload: bytes):
-#         piece_bits = bitstring.BitArray(payload).bin
-
-#         for bit in piece_bits:
-#             index = int(bit)
-
-#             if piece_bits[index]:
-#                 self.piece_status.update_peers_own(index, self.peer)
-
-#     async def __send_interested(self):
-#         message = struct.pack('>IB', 1, 2)
-
-#         self.writer.write(message)
-#         await self.writer.drain()
-
-#         self.am_interested = True
-
-#     async def __handle_piece(self, payload: bytes):
-#         '''
-#         unpack the block and update piece status
-#         '''
-
-#         block_len = len(payload) - 8
-
-#         index, begin = struct.unpack('>II', payload[:8])
-#         block = struct.unpack('%ds' % block_len, payload[8:])[0]
-
-#         # write to the file
-#         self.file_writer.write(index, begin, block)
-
-#         self.curr_piece.block_index += 1
-
-#         # if we've downloaded the file, we're done with it
-#         if self.curr_piece.is_downloaded():
-#             print("Finished piece")
-#             self.piece_status.update_completed_pieces(index)
-#             self.curr_piece = None
-
-#     async def __send_request(self):
-#         new_piece = False
-        
-#         if self.curr_piece is None or self.curr_piece.is_downloaded():
-#             self.curr_piece = self.piece_status.choose_next_piece(self.peer)
-
-#             # return early if there're no more missing pieces offered by peer
-#             if self.curr_piece is None:
-#                 return
-            
-#             new_piece = True
-
-#         # TODO: implement a rarest first downloading strategy instead of
-#         # randomly choosing
-            
-#         index = self.piece_status.get_piece_index(self.curr_piece)
-#         begin = self.curr_piece.get_byte_offset()
-#         length = self.curr_piece.get_block_size()
-
-#         if new_piece:
-#             self.piece_status.update_ongoing_pieces(index)
-
-#         message = struct.pack('>IBIII', *[
-#             13,
-#             6,
-#             index,
-#             begin,
-#             length
-#         ])
-
-#         self.writer.write(message)
-#         await self.writer.drain()
-
-
 from twisted.internet.protocol import Protocol, Factory
+from twisted.internet import reactor
+import os
+import tqdm
 
 class PeerFactory(Factory):
     def __init__(self, 
                  peers: list, 
                  meta_info: MetaInfo, 
                  peer_id: bytes):
-        
+        self.meta_info = meta_info
         self.info_hash = meta_info.info_hash
         self.my_peer_id = peer_id
 
@@ -269,6 +22,9 @@ class PeerFactory(Factory):
         self.pieces = meta_info.pieces
         self.num_pieces = meta_info.num_pieces
         self.file_size = meta_info.length
+        self.multi_files = meta_info.multi_files
+
+        self.progress_bar = tqdm.tqdm(total=self.num_pieces, initial=0)
 
         self.completed_pieces = bitstring.BitArray(self.num_pieces)
         self.ongoing_pieces = bitstring.BitArray(self.num_pieces)
@@ -276,22 +32,84 @@ class PeerFactory(Factory):
         # bitarray should start with all 1s as all pieces are missing
         self.missing_pieces.invert() 
 
-    def buildProtocol(self, addr):
-        return PeerProtocol(self)
-    
-    def update_ongoing_pieces(self, index: int):
-        self.ongoing_pieces[index] = 1
-        self.missing_pieces[index] = 0
+        # keep track of # of peers that own a given piece
+        self.num_peers_own = [0 for _ in range(self.num_pieces)]
 
-        # self.ongoing_pieces.invert(index)
-        # self.missing_pieces.invert(index)
+    def update_ongoing_pieces(self, index: int):
+        self.ongoing_pieces.set(1, index)
+        self.missing_pieces.set(0, index)
 
     def update_completed_pieces(self, index: int):
-        self.completed_pieces[index] = 1
-        self.ongoing_pieces[index] = 0
+        self.completed_pieces.set(1, index)
+        self.ongoing_pieces.set(0, index)
 
-        # self.completed_pieces.invert(index)
-        # self.ongoing_pieces.invert(index)
+    def update_peers_own(self, bitfield: bitstring.BitArray):
+        for i in range(self.num_pieces):
+            if bitfield[i]:
+                self.num_peers_own[i] += 1
+
+    def add_peers_own(self, index: int):
+        self.num_peers_own[index] += 1
+
+    def get_rarest_piece(self, bitfield: bitstring.BitArray) -> Piece | None:
+        rarest = None
+        min_occurance = len(self.peers)
+
+        for i in range(self.num_pieces):
+            # if peer owns the piece and it's missing
+            if bitfield[i] and self.missing_pieces[i]:
+                if self.num_peers_own[i] < min_occurance:
+                    rarest = self.pieces[i]
+                    min_occurance = self.num_peers_own[i]
+        
+        return rarest
+    
+    def write(self, piece_index: int, piece_byte_offset: int, data: bytes):
+        total_offset = self.meta_info.piece_length * piece_index + piece_byte_offset
+
+        if not self.multi_files:
+            file_path = os.path.join('downloads/' + self.meta_info.name)
+
+            with open(file_path, 'wb') as f:
+                f.seek(total_offset)
+                f.write(data)
+        else:
+            total_file_len = 0
+
+            for file in self.meta_info.files:
+                file_name = file['path']
+                file_len = file['length']
+
+                if total_file_len + file_len > total_offset:
+                    break
+
+                total_file_len += file_len
+
+            # write data to file at file offset
+            file_offset = total_offset - total_file_len
+
+            is_leftover = len(data) + file_offset > file_len
+
+            # there's not enough space in file for all data
+            if is_leftover:
+                remaining_file_len = file_len - file_offset
+                data = data[:remaining_file_len]
+                remaining_data = data[remaining_file_len:]
+
+            file_path = os.path.join('downloads/' + file_name)
+
+            with open(file_path, 'wb') as f:
+                f.seek(file_offset)
+                f.write(data)
+
+            # recursive call if there's not enough space in file for data
+            if is_leftover:
+                leftover_bytes = piece_byte_offset + remaining_file_len
+
+                self.write(piece_index, leftover_bytes, remaining_data)
+
+    def buildProtocol(self, addr):
+        return PeerProtocol(self)
 
 class PeerProtocol(Protocol):
     def __init__(self, factory: PeerFactory, peer: Peer):
@@ -311,6 +129,7 @@ class PeerProtocol(Protocol):
         self.peer_shared_pieces = False
 
         self.curr_piece = None
+        self.curr_bytes = b''
 
         self.bitfield = bitstring.BitArray(self.factory.num_pieces)
 
@@ -406,7 +225,8 @@ class PeerProtocol(Protocol):
             if length == 0:
                 return
             elif length == 1: # message with no payload - just message_id
-                self.handle_message(response[:5])
+                # self.handle_message(response[:5])
+                self.handle_message(response[4:])
                 self.parse_message(response[5:])
             else: # full message 
                 # there's overflow if the expected length exceeds actual length
@@ -416,7 +236,8 @@ class PeerProtocol(Protocol):
                     self.remaining_message_len = length - len(response[4:])
                     self.response += response
                 else:
-                    self.handle_message(response[:length + 4])
+                    # self.handle_message(response[:length + 4])
+                    self.handle_message(response[4:length + 4])
                     self.parse_message(response[length + 4:])
         else: # if it's continuing previous message
             overflow = self.remaining_message_len > len(response)
@@ -426,7 +247,8 @@ class PeerProtocol(Protocol):
                 self.response += response
             else:
                 self.response += response[:self.remaining_message_len]
-                self.handle_message(self.response)
+                # self.handle_message(self.response)
+                self.handle_message(self.response[4:])
 
                 new_message = response[self.remaining_message_len:]
                 self.remaining_message_len = 0
@@ -436,11 +258,12 @@ class PeerProtocol(Protocol):
 
 
     def handle_message(self, response: bytes):
-        length, message_id = struct.unpack('>IB', response[:5])
+        # length, message_id = struct.unpack('>IB', response[:5])
+        message_id = struct.unpack('B', response[:1])[0]
 
-        payload = response[5:]
+        # payload = response[5:]
+        payload = response[1:]
 
-        # print(f"Length: {length}")
         # print(f"Message ID: {message_id}")
         # print(f"Payload Size: {len(payload)}")
 
@@ -479,27 +302,21 @@ class PeerProtocol(Protocol):
 
     def handle_have(self, payload: bytes):
         index = struct.unpack('>I', payload)[0]
-        # self.factory.piece_status.update_peers_own(index, self.peer)
 
         self.bitfield[index] = 1
+
+        self.factory.add_peers_own(index)
 
         # make sure we're still interested
         if not self.am_interested:
             self.send_interested()
 
     def handle_bitfield(self, payload: bytes):
-        # piece_bits = bitstring.BitArray(payload).bin
-
-        # for bit in piece_bits:
-        #     index = int(bit)
-
-        #     if piece_bits[index]:
-        #         self.factory.piece_status.update_peers_own(index, 
-        #                                                    self.peer)
-                
         piece_bits = bitstring.BitArray(payload)
 
         self.bitfield = piece_bits[:piece_bits.len] + self.bitfield[piece_bits.len:]
+
+        self.factory.update_peers_own(self.bitfield)
 
         # send interested message after receiving bitfield
         if not self.am_interested:
@@ -510,31 +327,40 @@ class PeerProtocol(Protocol):
         unpack the block and update piece status
         '''
 
+        block_len = len(payload) - 8
+
         # TODO: do something with this / clean it up
-        if (len(payload) - 8) % self.curr_piece.BLOCK_SIZE != 0:
+        if block_len % self.curr_piece.BLOCK_SIZE != 0:
             return
-        
-        # print("BLOCK INDEX %d / %d total blocks" % (self.curr_piece.block_index, self.curr_piece.num_blocks))
 
         index, begin = struct.unpack('>II', payload[:8])
 
+        block = struct.unpack('%ds' % block_len, payload[8:])[0]
+
         # write to the file
-        # self.factory.file_writer.write(index, begin, block)
+        # self.factory.write(index, begin, block)
+        self.curr_bytes += block
 
         self.curr_piece.block_index += 1
 
-        # if we've downloaded the file, we're done with it
+        # if we've downloaded the piece, we're done with it
         if self.curr_piece.is_downloaded():
-            print("FINISHED PIECE")
-            self.factory.piece_status.update_completed_pieces(index)
+            self.factory.write(index, 0, self.curr_bytes)
+            self.factory.progress_bar.update(1)
+            self.factory.update_completed_pieces(index)
+            
             self.curr_piece = None
+            self.curr_bytes = b''
+
+            # if all pieces are completed, end all connections
+            if self.factory.completed_pieces.all(1):
+                reactor.stop()
 
     def send_request(self):
         new_piece = False
 
         if self.curr_piece is None or self.curr_piece.is_downloaded():
-            # self.curr_piece = self.factory.piece_status.choose_next_piece(self.peer)
-            self.curr_piece = self.factory.piece_status.choose_next_piece(self.bitfield)
+            self.curr_piece = self.factory.get_rarest_piece(self.bitfield)
 
             # if there're no more missing pieces offered by peer
             if self.curr_piece is None:
@@ -543,19 +369,13 @@ class PeerProtocol(Protocol):
                 return
             
             new_piece = True
-
-        # TODO: implement a rarest first downloading strategy instead of
-        # randomly choosing
-            
-        index = self.factory.piece_status.get_piece_index(self.curr_piece)
+        
+        index = self.curr_piece.index
         begin = self.curr_piece.get_byte_offset()
         length = self.curr_piece.get_block_size()
 
-        # print("Requesting Offset: %d" % begin)
-        # print("Requesting a block size of: %d" % length)
-
         if new_piece:
-            self.factory.piece_status.update_ongoing_pieces(index)
+            self.factory.update_ongoing_pieces(index)
 
         message = struct.pack('>IBIII', *[
             13,
