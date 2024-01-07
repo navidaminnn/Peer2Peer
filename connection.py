@@ -31,92 +31,90 @@ class PeerFactory(Factory):
         self.ongoing_pieces = bitstring.BitArray(self.num_pieces)
         self.missing_pieces = bitstring.BitArray(self.num_pieces)
         # bitarray should start with all 1s as all pieces are missing
-        self.missing_pieces.invert() 
-
-        # keep track of # of peers that own a given piece
-        self.num_peers_own = [0 for _ in range(self.num_pieces)]
+        self.missing_pieces.invert()
 
         self.num_connections = 0
         self.num_completed = 0
 
-    def update_ongoing_pieces(self, index: int):
-        self.ongoing_pieces.set(1, index)
-        self.missing_pieces.set(0, index)
+        self.data = [b'' for _ in range(self.num_pieces)]
+
+    # def update_ongoing_pieces(self, index: int):
+    #     self.ongoing_pieces.set(1, index)
+    #     self.missing_pieces.set(0, index)
 
     def update_completed_pieces(self, index: int):
         self.completed_pieces.set(1, index)
-        self.ongoing_pieces.set(0, index)
-
-    def update_peers_own(self, bitfield: bitstring.BitArray):
-        for i in range(self.num_pieces):
-            if bitfield[i]:
-                self.num_peers_own[i] += 1
-
-    def add_peers_own(self, index: int):
-        self.num_peers_own[index] += 1
+        # self.ongoing_pieces.set(0, index)
+        self.missing_pieces.set(0, index)
 
     def get_rarest_piece(self, bitfield: bitstring.BitArray) -> Piece | None:
         # create intersection of pieces that peer owns and are missing
         desired_pieces = bitfield & self.missing_pieces
-
         piece_indices = list(desired_pieces.findall(bitstring.Bits('0b1')))
 
         if len(piece_indices) == 0:
-            print(f"Missing pieces: {list(self.missing_pieces.findall(bitstring.Bits('0b1')))}")
-            print(f"Ongoing pieces: {list(self.ongoing_pieces.findall(bitstring.Bits('0b1')))}")
-            # TODO: if there are ongoing pieces, i need to make sure that when connections are lost, if the current piece is in ongoing list, to put them back into missing
             return None
 
         index = random.choice(piece_indices)
 
         return self.pieces[index]
     
-    def write(self, piece_index: int, piece_byte_offset: int, data: bytes):
-        total_offset = self.meta_info.piece_length * piece_index + piece_byte_offset
+    def get_file_path(self, path):
+        file_name = path.pop()
+        directory = os.path.join(os.getcwd(), 'downloads', *path)
 
-        if not self.multi_files:
-            file_path = os.path.join('downloads/' + self.meta_info.name)
+        if len(path) > 0:
+            os.makedirs(directory)
+        
+        file_path = directory + '/' + file_name
 
-            with open(file_path, 'wb') as f:
-                f.seek(total_offset)
-                f.write(data)
+        return open(file_path, 'wb')
+    
+    def write(self):
+        if self.multi_files:
+            self.write_multi_files()
         else:
-            total_file_len = 0
+            self.write_file()
+    
+    def write_file(self):
+        file = self.get_file_path([self.meta_info.name])
 
-            for file in self.meta_info.files:
-                file_name = file['path']
-                file_len = file['length']
+        for index in range(self.num_pieces):
+            data = self.data[index]
+            file.write(data)
 
-                if total_file_len + file_len > total_offset:
-                    break
+    def write_multi_files(self):
+        index = 0
+        offset = 0
 
-                total_file_len += file_len
+        file_offset = 0
+        file_index = 0
+        file_len = self.meta_info.files[file_index]['length']
+        file = self.get_file_path(self.meta_info.files[file_index]['path'])
 
-            # write data to file at file offset
-            file_offset = total_offset - total_file_len
+        for index in range(self.num_pieces):
+            data = self.data[index]
+            data_len = len(self.data[index])
 
-            is_leftover = len(data) + file_offset > file_len
-
-            # there's not enough space in file for all data
-            if is_leftover:
+            # piece won't all fit in file
+            if data_len + file_offset > file_len:
                 remaining_file_len = file_len - file_offset
-                data = data[:remaining_file_len]
+                curr_file_data = data[:remaining_file_len]
                 remaining_data = data[remaining_file_len:]
 
-            file_path = os.path.join('downloads/' + file_name)
+                file.write(curr_file_data)
+                file.close()
 
-            with open(file_path, 'wb') as f:
-                f.seek(file_offset)
-                f.write(data)
+                file_index += 1
+                file_offset = 0
+                file_len = self.meta_info.files[file_index]['length']
+                file = self.get_file_path(self.meta_info.files[file_index]['path'])
 
-            # recursive call if there's not enough space in file for data
-            if is_leftover:
-                leftover_bytes = piece_byte_offset + remaining_file_len
-
-                self.write(piece_index, leftover_bytes, remaining_data)
-
-    def end_connections(self):
-        reactor.stop()
+                file.write(remaining_data)
+                file_offset += len(remaining_data)
+            else:
+                file.write(data)
+                file_offset += data_len
 
     def buildProtocol(self, addr):
         return PeerProtocol(self)
@@ -140,6 +138,7 @@ class PeerProtocol(Protocol):
 
         self.curr_piece = None
         self.curr_bytes = b''
+        self.block_index = 0
 
         self.bitfield = bitstring.BitArray(self.factory.num_pieces)
 
@@ -148,11 +147,14 @@ class PeerProtocol(Protocol):
         once a connection is made, initiate by sending a handshake
         '''
         
+        # TODO: maybe get rid of this? no use rn
         self.factory.num_connections += 1
 
     def connectionLost(self, reason):
         if self.curr_piece:
-            print("Connection has been lost at index %d" % self.curr_piece.block_index)
+            print("Connection has been lost at index %d with piece #%d" % (self.block_index, self.curr_piece.index))
+            self.block_index = 0
+            self.curr_bytes = b''
         else:
             print("Connection has been lost")
 
@@ -239,9 +241,9 @@ class PeerProtocol(Protocol):
 
             # keep alive message
             if length == 0:
+                self.attempt_request()
                 return
             elif length == 1: # message with no payload - just message_id
-                # self.handle_message(response[:5])
                 self.handle_message(response[4:])
                 self.parse_message(response[5:])
             else: # full message 
@@ -252,7 +254,6 @@ class PeerProtocol(Protocol):
                     self.remaining_message_len = length - len(response[4:])
                     self.response += response
                 else:
-                    # self.handle_message(response[:length + 4])
                     self.handle_message(response[4:length + 4])
                     self.parse_message(response[length + 4:])
         else: # if it's continuing previous message
@@ -263,7 +264,6 @@ class PeerProtocol(Protocol):
                 self.response += response
             else:
                 self.response += response[:self.remaining_message_len]
-                # self.handle_message(self.response)
                 self.handle_message(self.response[4:])
 
                 new_message = response[self.remaining_message_len:]
@@ -274,18 +274,14 @@ class PeerProtocol(Protocol):
 
 
     def handle_message(self, response: bytes):
-        # length, message_id = struct.unpack('>IB', response[:5])
         message_id = struct.unpack('B', response[:1])[0]
-
-        # payload = response[5:]
         payload = response[1:]
-
-        # print(f"Message ID: {message_id}")
-        # print(f"Payload Size: {len(payload)}")
 
         # for us to request pieces, we need to be interested & unchoked
         if message_id == 0:
             self.am_choked = True
+            # try to get unchoked
+            self.send_interested()
         elif message_id == 1:
             self.am_choked = False
         elif message_id == 2:
@@ -307,11 +303,7 @@ class PeerProtocol(Protocol):
         elif message_id == 9:
             pass
 
-        if (self.am_interested 
-            and not self.am_choked 
-            and self.peer_shared_pieces 
-            and self.curr_piece is None):
-            self.send_request()
+        self.attempt_request()
 
     def send_interested(self):
         message = struct.pack('>IB', 1, 2)
@@ -322,9 +314,7 @@ class PeerProtocol(Protocol):
     def handle_have(self, payload: bytes):
         index = struct.unpack('>I', payload)[0]
 
-        self.bitfield[index] = 1
-
-        self.factory.add_peers_own(index)
+        self.bitfield.set(1, index)
 
         # make sure we're still interested
         if not self.am_interested:
@@ -337,8 +327,6 @@ class PeerProtocol(Protocol):
 
         self.bitfield = piece_bits[:split] + self.bitfield[split:]
 
-        self.factory.update_peers_own(self.bitfield)
-
         # send interested message after receiving bitfield
         if not self.am_interested:
             self.send_interested()
@@ -348,84 +336,66 @@ class PeerProtocol(Protocol):
         unpack the block and update piece status
         '''
 
-        block_len = len(payload) - 8
-
-        # TODO: do something with this / clean it up
-        if block_len % self.curr_piece.BLOCK_SIZE != 0:
+        # TODO: clean this up so we can send a cancel message?
+        if self.factory.completed_pieces[self.curr_piece.index]:
+            self.curr_piece = None
+            self.curr_bytes = b''
+            self.block_index = 0
             return
+
+        block_len = len(payload) - 8
 
         index, begin = struct.unpack('>II', payload[:8])
 
         block = struct.unpack('%ds' % block_len, payload[8:])[0]
 
-        # write to the file
-        # self.factory.write(index, begin, block)
-        # self.curr_bytes += block
-
-        self.curr_piece.block_index += 1
+        # add to current piece contents
+        self.curr_bytes += block
+        self.block_index += 1
 
         # if we've downloaded the piece, we're done with it
-        if self.curr_piece.is_downloaded():
-            # self.factory.write(index, 0, self.curr_bytes)
-            self.factory.progress_bar.update(1)
-            self.factory.num_completed += 1
+        if self.curr_piece.is_downloaded(self.block_index):
+            self.factory.data[index] = self.curr_bytes
+            # self.factory.num_completed += 1
             self.factory.update_completed_pieces(index)
+            self.factory.progress_bar.update(1)
             
             self.curr_piece = None
             self.curr_bytes = b''
+            self.block_index = 0
 
             # if all pieces are completed, end all connections
             if self.factory.completed_pieces.all(True):
-                print("THIS HAPPENS")
-                self.factory.end_connections()
+                self.factory.write()
+                print("\nDownload has completed successfully!")
+                reactor.stop()
+
+    def attempt_request(self):
+        '''
+        attempt to send a request if requirements are met
+        '''
+
+        if (self.am_interested 
+            and not self.am_choked 
+            and self.peer_shared_pieces 
+            and self.curr_piece is None):
+            self.send_request()
 
     def send_request(self):
-        # new_piece = False
-
-        # if self.curr_piece is None or self.curr_piece.is_downloaded():
-        #     self.curr_piece = self.factory.get_rarest_piece(self.bitfield)
-
-        #     # if there're no more missing pieces offered by peer
-        #     if self.curr_piece is None:
-        #         # we're no longer interested as peer owns no desired pieces
-        #         self.am_interested = False
-        #         return
-            
-        #     new_piece = True
-        
-        # index = self.curr_piece.index
-        # begin = self.curr_piece.get_byte_offset()
-        # length = self.curr_piece.get_block_size()
-
-        # if new_piece:
-        #     self.factory.update_ongoing_pieces(index)
-
-        # message = struct.pack('>IBIII', *[
-        #     13,
-        #     6,
-        #     index,
-        #     begin,
-        #     length
-        # ])
-
-        # self.transport.write(message)
-
         self.curr_piece = self.factory.get_rarest_piece(self.bitfield)
 
         # couldn't find any piece based on peer's bitfield
         if self.curr_piece is None:
-            print("Couldn't find piece")
-            self.am_interested = False
             return
         
         piece_index = self.curr_piece.index
         
-        self.factory.update_ongoing_pieces(piece_index)
+        # self.factory.update_ongoing_pieces(piece_index)
 
         for block_index in range(0, self.curr_piece.num_blocks):
             begin = block_index * self.curr_piece.BLOCK_SIZE
-            
-            if block_index == self.curr_piece.num_blocks - 1:
+
+            if self.curr_piece.on_final_block(block_index):
                 length = self.curr_piece.final_block_size
             else:
                 length = self.curr_piece.BLOCK_SIZE
@@ -439,7 +409,6 @@ class PeerProtocol(Protocol):
             ])
 
             self.transport.write(message)
-            
 
     # TODO: currently only leechers
     def handle_request(self, payload: bytes):
