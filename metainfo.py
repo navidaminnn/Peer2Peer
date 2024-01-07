@@ -54,9 +54,9 @@ class MetaInfo:
 
             for file in self.info[b'files']:
                 self.length += file[b'length']
-                path_str = '/'.join(path.decode() for path in file[b'path'])
+                path_list = [path.decode() for path in file[b'path']]
 
-                self.files.append({'length' : file[b'length'], 'path' : path_str})
+                self.files.append({'length' : file[b'length'], 'path' : path_list})
         else:
             self.length = self.info[b'length']
 
