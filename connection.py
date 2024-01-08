@@ -64,18 +64,18 @@ class PeerFactory(Factory):
     
     def write(self):
         if self.multi_files:
-            self.write_multi_files()
+            self.__write_multi_files()
         else:
-            self.write_file()
+            self.__write_file()
     
-    def write_file(self):
+    def __write_file(self):
         file = self.get_file_path([self.meta_info.name])
 
         for index in range(self.num_pieces):
             data = self.data[index]
             file.write(data)
 
-    def write_multi_files(self):
+    def __write_multi_files(self):
         file_offset = 0
         file_index = 0
         file_len = self.meta_info.files[file_index]['length']
@@ -130,24 +130,6 @@ class PeerProtocol(Protocol):
         self.block_index = 0
 
         self.bitfield = bitstring.BitArray(self.factory.num_pieces)
-
-    # def connectionMade(self):
-    #     '''
-    #     once a connection is made, initiate by sending a handshake
-    #     '''
-        
-    #     # TODO: maybe get rid of this? no use rn
-    #     self.factory.num_connections += 1
-
-    # def connectionLost(self, reason):
-    #     if self.curr_piece:
-    #         print("Connection has been lost at index %d with piece #%d" % (self.block_index, self.curr_piece.index))
-    #         self.block_index = 0
-    #         self.curr_bytes = b''
-    #     else:
-    #         print("Connection has been lost")
-
-    #     self.factory.num_connections -= 1
 
     def dataReceived(self, data: bytes) -> None:
         if not self.have_handshaked:
@@ -374,6 +356,10 @@ class PeerProtocol(Protocol):
             self.send_request()
 
     def send_request(self):
+        '''
+        sends peer a request for an entire piece that's chosen at random
+        '''
+
         self.curr_piece = self.factory.get_rarest_piece(self.bitfield)
 
         # couldn't find any piece based on peer's bitfield
@@ -381,8 +367,6 @@ class PeerProtocol(Protocol):
             return
         
         piece_index = self.curr_piece.index
-        
-        # self.factory.update_ongoing_pieces(piece_index)
 
         for block_index in range(0, self.curr_piece.num_blocks):
             begin = block_index * self.curr_piece.BLOCK_SIZE

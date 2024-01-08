@@ -24,17 +24,37 @@ def connected_protocol(protocol):
 def error_handle(error):
     pass
 
+def print_info(meta_info: MetaInfo, tracker: Tracker):
+    print("\nTorrent File Name: %s" % meta_info.file_name)
+    print("Number of Pieces: %d" % meta_info.num_pieces)
+    print("Piece Length: %d" % meta_info.piece_length)
+    print("Last Piece Length: %d" % meta_info.last_piece_length)
+    print("Total # of Bytes: %d" % meta_info.length)
+    print("Number of Peers: %d" % len(tracker.peers))
+
+    print("\nFile names and their sizes:")
+    if meta_info.multi_files:
+        for file in meta_info.files:
+            print(" - '%s' (%d bytes)" % (file['path'][len(file['path']) - 1], file['length']))
+    else:
+        print(" - '%s' (%d bytes)" % (meta_info.name, meta_info.length))
+
 if __name__ == "__main__":
-    meta_info = MetaInfo(file_path)
+    print("To use the Peer2Peer client, please type in the name of your torrent file!")
+    print("(you're not required to type the '.torrent' part)")
+
+    torrent_file = input().strip()
+
+    if not torrent_file.endswith('.torrent'):
+        torrent_file += '.torrent'
+
+    meta_info = MetaInfo(torrent_file)
     meta_info.parse_file()
 
     tracker = Tracker(meta_info)
     tracker.fetch_peers()
 
-    print(f"Number of pieces: {meta_info.num_pieces}")
-    print(f"Number of peers: {len(tracker.peers)}")
-    print(f"Piece length: {meta_info.piece_length}")
-    print("Total # of bytes: %d" % meta_info.length)
+    print_info(meta_info, tracker)
 
     start_server(tracker, meta_info)
 
