@@ -25,7 +25,7 @@ class PeerFactory(Factory):
         self.file_size = meta_info.length
         self.multi_files = meta_info.multi_files
 
-        self.progress_bar = tqdm.tqdm(total=self.num_pieces, initial=0)
+        self.progress_bar = tqdm.tqdm(total=self.num_pieces, initial=0, unit='pieces')
 
         self.completed_pieces = bitstring.BitArray(self.num_pieces)
         self.ongoing_pieces = bitstring.BitArray(self.num_pieces)
@@ -33,18 +33,10 @@ class PeerFactory(Factory):
         # bitarray should start with all 1s as all pieces are missing
         self.missing_pieces.invert()
 
-        self.num_connections = 0
-        self.num_completed = 0
-
         self.data = [b'' for _ in range(self.num_pieces)]
-
-    # def update_ongoing_pieces(self, index: int):
-    #     self.ongoing_pieces.set(1, index)
-    #     self.missing_pieces.set(0, index)
 
     def update_completed_pieces(self, index: int):
         self.completed_pieces.set(1, index)
-        # self.ongoing_pieces.set(0, index)
         self.missing_pieces.set(0, index)
 
     def get_rarest_piece(self, bitfield: bitstring.BitArray) -> Piece | None:
@@ -84,9 +76,6 @@ class PeerFactory(Factory):
             file.write(data)
 
     def write_multi_files(self):
-        index = 0
-        offset = 0
-
         file_offset = 0
         file_index = 0
         file_len = self.meta_info.files[file_index]['length']
@@ -142,23 +131,23 @@ class PeerProtocol(Protocol):
 
         self.bitfield = bitstring.BitArray(self.factory.num_pieces)
 
-    def connectionMade(self):
-        '''
-        once a connection is made, initiate by sending a handshake
-        '''
+    # def connectionMade(self):
+    #     '''
+    #     once a connection is made, initiate by sending a handshake
+    #     '''
         
-        # TODO: maybe get rid of this? no use rn
-        self.factory.num_connections += 1
+    #     # TODO: maybe get rid of this? no use rn
+    #     self.factory.num_connections += 1
 
-    def connectionLost(self, reason):
-        if self.curr_piece:
-            print("Connection has been lost at index %d with piece #%d" % (self.block_index, self.curr_piece.index))
-            self.block_index = 0
-            self.curr_bytes = b''
-        else:
-            print("Connection has been lost")
+    # def connectionLost(self, reason):
+    #     if self.curr_piece:
+    #         print("Connection has been lost at index %d with piece #%d" % (self.block_index, self.curr_piece.index))
+    #         self.block_index = 0
+    #         self.curr_bytes = b''
+    #     else:
+    #         print("Connection has been lost")
 
-        self.factory.num_connections -= 1
+    #     self.factory.num_connections -= 1
 
     def dataReceived(self, data: bytes) -> None:
         if not self.have_handshaked:
@@ -336,6 +325,9 @@ class PeerProtocol(Protocol):
         unpack the block and update piece status
         '''
 
+        if not self.curr_piece:
+            return
+
         # TODO: clean this up so we can send a cancel message?
         if self.factory.completed_pieces[self.curr_piece.index]:
             self.curr_piece = None
@@ -355,10 +347,10 @@ class PeerProtocol(Protocol):
 
         # if we've downloaded the piece, we're done with it
         if self.curr_piece.is_downloaded(self.block_index):
-            self.factory.data[index] = self.curr_bytes
-            # self.factory.num_completed += 1
-            self.factory.update_completed_pieces(index)
-            self.factory.progress_bar.update(1)
+            if not self.factory.completed_pieces[self.curr_piece.index]:
+                self.factory.data[index] = self.curr_bytes
+                self.factory.progress_bar.update(1)
+                self.factory.update_completed_pieces(index)
             
             self.curr_piece = None
             self.curr_bytes = b''
