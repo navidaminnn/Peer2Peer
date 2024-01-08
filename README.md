@@ -6,6 +6,7 @@ bitTorrent clone - allows users to utilize peer-to-peer connections to download 
 ## Built With
 * Python
 * Twisted
+* Requests
 
 ## Features
 * Downloading torrent files
