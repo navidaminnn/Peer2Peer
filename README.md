@@ -1,6 +1,8 @@
 # Peer2Peer
 bitTorrent clone - allows users to utilize peer-to-peer connections to download pieces of a file!
 
+![peer2peer](https://github.com/navidaminnn/Peer2Peer/assets/135196056/a2c4817c-61e0-4273-91f4-cba7b9d64c13)
+
 ## Built With
 * Python
 * Twisted
@@ -14,6 +16,19 @@ bitTorrent clone - allows users to utilize peer-to-peer connections to download 
 * Both compact-mode and dictionary-mode peer lists work
 * Supports both IPv4 and IPv6 peer IP addresses
 
+## Requirements
+* Python 3.11+
+* All of the libraries/modules in the requirements.txt
+
+## Installation / Setup
+  1. Clone the repository
+  2. Install all required libraries/modules for the client by doing ```pip install -r requirements.txt```
+  3. Download the torrent file you'd like
+  4. Drag the torrent file into the repository's root folder
+  5. Run the program using ```python main.py```
+  6. Follow the instructions in the command line
+  7. The download will now begin!
+
 ## Future Goals
 * Let users also share data (I.E be a peer rather than a leech)
 * Implementing a more efficient piece-choosing algorithm (rarest first?)
@@ -21,9 +36,3 @@ bitTorrent clone - allows users to utilize peer-to-peer connections to download 
 ## References
 * [Official BitTorrent Protocols](https://www.bittorrent.org/beps/bep_0000.html) - provides all the necessary information given that it's the official docs
 * [BitTorrentSpecification Wiki](https://wiki.theory.org/BitTorrentSpecification) - provides more insight and detail into various parts of the process and also gives different perspectives/takes on design choices
-
-## Installation / Setup
-* 
-
-## Usage
-* 
