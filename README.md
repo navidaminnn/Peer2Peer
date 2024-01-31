@@ -31,7 +31,6 @@ bitTorrent clone - allows users to utilize peer-to-peer connections to download 
   7. The download will now begin!
 
 ## Future Goals
-* Let users also share data (I.E be a peer rather than a leech)
 * Implementing a more efficient piece-choosing algorithm (rarest first?)
 
 ## References
