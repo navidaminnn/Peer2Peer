@@ -1,5 +1,5 @@
 # Peer2Peer
-bitTorrent clone - allows users to utilize peer-to-peer connections to download pieces of a file!
+torrenting client following the BitTorrent protocol - allows users to utilize peer-to-peer connections to download pieces of a file!
 
 ![peer2peer](https://github.com/navidaminnn/Peer2Peer/assets/135196056/a2c4817c-61e0-4273-91f4-cba7b9d64c13)
 
